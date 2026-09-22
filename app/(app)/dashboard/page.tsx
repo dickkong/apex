@@ -10,6 +10,8 @@ import { getSessionUser } from "@/lib/auth";
 import { fmtDate, fmtMoney, fmtPct, fmtMoneyCompact, fmtUnits } from "@/lib/money";
 import { getSeries, getSummary } from "@/lib/portfolio";
 import { getDepositMethods, getRecentLedger, parseLedgerMeta, type LedgerView } from "@/lib/queries";
+import { getWithdrawalLock } from "@/lib/lockdown";
+import { getDailyYieldRate } from "@/lib/yield";
 
 export const metadata: Metadata = { title: "Portfolio" };
 
@@ -42,6 +44,8 @@ export default async function DashboardPage() {
   const channels = getDepositMethods(true);
 
   const verified = user.status === "verified";
+  const yieldRate = getDailyYieldRate();
+  const lock = getWithdrawalLock(user);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -59,6 +63,15 @@ export default async function DashboardPage() {
           </span>
         </div>
       )}
+
+      <div className="mb-6 rounded-lg border border-gold-600/40 bg-maroon-900/40 px-4 py-3 text-sm">
+        <span className="font-semibold text-gold-300">Daily interest policy:</span>{" "}
+        <span className="text-muted">
+          your total portfolio value accrues daily interest that is always between 0.5% and 1% per
+          day, compounded. The applied rate is {fmtPct(yieldRate, false)}/day and every accrual is
+          booked transparently in your ledger.
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
@@ -110,7 +123,12 @@ export default async function DashboardPage() {
             <DepositForm methods={channels} disabled={!verified} />
           </Card>
           <Card title="Liquidity access" subtitle="Request a cash distribution.">
-            <WithdrawForm maxCash={verified ? summary.cash : 0} disabled={!verified} defaultAddress={user.withdraw_address} />
+            <WithdrawForm
+              maxCash={verified ? summary.cash : 0}
+              disabled={!verified}
+              defaultAddress={user.withdraw_address}
+              lockInfo={lock.locked ? { untilDate: lock.untilDate, daysRemaining: lock.daysRemaining } : null}
+            />
           </Card>
           <Card title="Payout address" subtitle="Where verified withdrawals are sent.">
             <PayoutForm current={user.withdraw_address} />

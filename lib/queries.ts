@@ -47,19 +47,24 @@ export type { LedgerMeta } from './ledger-meta';
 export interface DepositMethodView extends DepositMethodRow {
   asset_name: string;
   asset_ticker: string | null;
+  asset_price: number | null;
 }
 
 export function getDepositMethods(onlyEnabled = false): DepositMethodView[] {
   const db = getDb();
+  const today = todayDateOnly();
   const rows = db
     .prepare(
-      `SELECT dm.*, a.name AS asset_name, a.ticker AS asset_ticker
+      `SELECT dm.*, a.name AS asset_name, a.ticker AS asset_ticker,
+         (SELECT p.price FROM price_observations p
+           WHERE p.asset_id = a.id AND p.obs_date <= ?
+           ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS asset_price
        FROM deposit_methods dm
        JOIN assets a ON a.id = dm.asset_id
        WHERE (? = 0 OR dm.enabled = 1)
        ORDER BY dm.symbol`
     )
-    .all(onlyEnabled ? 1 : 0) as unknown as Array<Record<string, unknown>>;
+    .all(today, onlyEnabled ? 1 : 0) as unknown as Array<Record<string, unknown>>;
   return rows.map((r) => ({ ...r }) as unknown as DepositMethodView);
 }
 

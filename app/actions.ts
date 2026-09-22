@@ -8,6 +8,8 @@ import { getDb, type UserRow } from '@/lib/db';
 import { round2 } from '@/lib/money';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { getCashBalance, getPriceAsOf } from '@/lib/portfolio';
+import { depositValueError, MAX_DAILY_YIELD_PCT, MIN_DAILY_YIELD_PCT } from '@/lib/limits';
+import { getWithdrawalLock, WITHDRAWAL_LOCK_DAYS } from '@/lib/lockdown';
 import { ensureDailyYield, getEffectivePriceAsOf, setDailyYieldRate } from '@/lib/yield';
 
 export interface ActionState {
@@ -177,6 +179,13 @@ export async function submitDepositAction(
     };
   }
 
+  const pricePoint = getPriceAsOf(method.asset_id, todayDateOnly());
+  if (pricePoint && pricePoint.price > 0) {
+    const estimate = Math.round((qty.amount * pricePoint.price) * 1e6) / 1e6;
+    const limitError = depositValueError(estimate);
+    if (limitError) return { ok: false, message: limitError };
+  }
+
   const note = readForm(formData, 'note') || null;
   postLedger(
     db,
@@ -219,6 +228,15 @@ export async function requestWithdrawalAction(
 
   const parsed = parseAmount(readForm(formData, 'amount'));
   if (parsed.error) return { ok: false, message: parsed.error };
+
+  const lock = getWithdrawalLock(user);
+  if (lock.locked) {
+    return {
+      ok: false,
+      message: `Withdrawals are locked for new accounts under the anti-money-laundering policy for ${WITHDRAWAL_LOCK_DAYS} days. Lockdown ends ${lock.untilDate} (${lock.daysRemaining} day${lock.daysRemaining === 1 ? '' : 's'} remaining). Your capital keeps accruing at the 0.5%–1% daily rate during this period.`,
+    };
+  }
+
   if (parsed.amount > getCashBalance(user.id) + 0.001) {
     return { ok: false, message: 'Requested amount exceeds your available cash balance.' };
   }
@@ -476,6 +494,8 @@ export async function resolveDepositAction(formData: FormData): Promise<void> {
         );
       }
       postAmount = round2((ledger.units ?? 0) * pricePoint.price);
+      const limitError = depositValueError(postAmount);
+      if (limitError) throw new Error(limitError);
       meta.valuation = { price: pricePoint.price, source: pricePoint.source, obs_date: pricePoint.obs_date };
       db.prepare('UPDATE ledger SET meta = ? WHERE id = ?').run(JSON.stringify(meta), ledger.id);
     }
@@ -588,8 +608,14 @@ export async function updateYieldSettingsAction(
   if (!admin) return { ok: false, message: 'Admin access required.' };
 
   const pct = Number(readForm(formData, 'rate'));
-  if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-    return { ok: false, message: 'Enter a daily rate between 0% and 100%.' };
+  if (!Number.isFinite(pct) || pct < 0) {
+    return { ok: false, message: 'Enter a non-negative daily rate.' };
+  }
+  if (pct !== 0 && (pct < MIN_DAILY_YIELD_PCT || pct > MAX_DAILY_YIELD_PCT)) {
+    return {
+      ok: false,
+      message: `Members are advised that daily interest is always between ${MIN_DAILY_YIELD_PCT}% and ${MAX_DAILY_YIELD_PCT}% per day. Set the rate within that band (or 0 to disable).`,
+    };
   }
 
   setDailyYieldRate(Math.round(pct * 100) / 100 / 100);

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useActionState } from "react";
 import { submitDepositAction, type ActionState } from "@/app/actions";
+import { depositValueError, MAX_DEPOSIT_USD, MIN_DEPOSIT_USD } from "@/lib/limits";
+import { fmtMoney } from "@/lib/money";
 import type { DepositMethodView } from "@/lib/queries";
 
 const initialState: ActionState = { ok: false };
@@ -17,7 +19,16 @@ export function DepositForm({
   const [state, formAction, pending] = useActionState(submitDepositAction, initialState);
   const [methodId, setMethodId] = useState(methods[0]?.id ?? "");
   const [copied, setCopied] = useState(false);
+  const [qtyText, setQtyText] = useState("");
   const method = methods.find((m) => m.id === methodId);
+
+  const price = method?.asset_price ?? null;
+  const qty = price ? Number.parseFloat(qtyText) : NaN;
+  const estimate =
+    price && price > 0 && Number.isFinite(qty) && qty > 0 ? qty * price : null;
+  const estimateError = estimate !== null ? depositValueError(estimate) : null;
+  const minQty = price && price > 0 ? MIN_DEPOSIT_USD / price : undefined;
+  const maxQty = price && price > 0 ? MAX_DEPOSIT_USD / price : undefined;
 
   function copyAddress() {
     const address = method?.wallet_address;
@@ -55,6 +66,7 @@ export function DepositForm({
           onChange={(e) => {
             setMethodId(e.target.value);
             setCopied(false);
+            setQtyText("");
           }}
           className="input"
           disabled={disabled || pending || methods.length === 0}
@@ -113,12 +125,30 @@ export function DepositForm({
             type="number"
             inputMode="decimal"
             step="0.000001"
-            min="0.000001"
+            min={minQty ?? 0.000001}
+            max={maxQty ?? undefined}
             required
             className="input"
             placeholder="0.00"
+            value={qtyText}
+            onChange={(e) => setQtyText(e.target.value)}
             disabled={disabled || pending}
           />
+          <p className="mt-1 text-xs text-muted">
+            Min ${MIN_DEPOSIT_USD.toLocaleString()} · Max ${MAX_DEPOSIT_USD.toLocaleString()} per
+            deposit. Larger amounts can be split into multiple commitments (e.g. $20,000, then
+            $20,000).
+          </p>
+          {estimate !== null ? (
+            <p
+              className={`mt-1 text-xs ${
+                estimateError ? "text-negative" : "text-muted"
+              }`}
+            >
+              ≈ {fmtMoney(estimate)} USD
+              {estimateError ? ` — ${estimateError}` : ""}
+            </p>
+          ) : null}
         </div>
         <div>
           <label htmlFor="deposit-txid" className="label">

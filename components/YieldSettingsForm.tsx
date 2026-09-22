@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { updateYieldSettingsAction, type ActionState } from "@/app/actions";
+import { MAX_DAILY_YIELD_PCT, MIN_DAILY_YIELD_PCT } from "@/lib/limits";
 
 const initialState: ActionState = { ok: false };
 
@@ -21,8 +22,8 @@ export function YieldSettingsForm({ ratePct }: { ratePct: number }) {
             type="number"
             inputMode="decimal"
             step="0.01"
-            min="0"
-            max="100"
+            min={MIN_DAILY_YIELD_PCT}
+            max={MAX_DAILY_YIELD_PCT}
             required
             className="input"
             defaultValue={ratePct}
@@ -47,9 +48,11 @@ export function YieldSettingsForm({ ratePct }: { ratePct: number }) {
       ) : null}
 
       <p className="text-xs text-muted">
-        Applied daily to every member&apos;s total value (cash + holdings) and compounded. Missed
-        days backfill automatically on the next read; stopping the rate freezes accrual, it never
-        rewrites past entries.
+        Members are advised that daily interest is always between {MIN_DAILY_YIELD_PCT}% and{" "}
+        {MAX_DAILY_YIELD_PCT}% per day — saving is blocked outside that band (0 still disables the
+        program). Applied to every member&apos;s total value (cash + holdings) and compounded.
+        Missed days backfill automatically on the next read; stopping the rate freezes accrual, it
+        never rewrites past entries.
       </p>
     </form>
   );

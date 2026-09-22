@@ -38,6 +38,15 @@ Credentials are also written to `data/admin-credentials.txt`. Delete `data/` to 
 - Unverified accounts cannot deposit, buy, sell, or withdraw — every money action is gated on
   `status = 'verified'`.
 
+### Anti-money-laundering (30-day money-bind)
+All new users are advised (landing page, register page, dashboard) that an **AML policy applies a
+30-day money-bind** from the moment their account is created: during the first 30 days the account
+cannot make withdrawals. Deposits remain fully invested and keep accruing at the 0.5%–1% daily
+rate during the lockdown. Withdrawal requests from a locked account are rejected server-side
+(`requestWithdrawalAction`) with the unlock date and days remaining; the withdrawal form shows the
+countdown and disables itself; Oversight marks locked members. After the 30-day window the account
+may withdraw at any time (`lib/lockdown.ts`).
+
 ### Honest books (the ledger)
 Every money movement is an entry in a single append-only `ledger` table:
 
@@ -62,6 +71,11 @@ transaction hash. When an admin verifies it, the deposit is valued **in USD at a
 observation** (`crypto amount × observed price`, e.g. 250 USDT × 1.0000) and posted. No price
 observation for the asset → the deposit cannot be valued, so the admin must record a sourced
 price first. Nothing is priced at a fake or projected rate.
+
+Every single deposit commitment is limited to **$50 minimum and $20,000 maximum** (USD value).
+Larger amounts are naturally split: a member wanting $40,000 in files two commitments (2 × $20,000).
+The limit is enforced on the form (live USD estimate against the current real price), at
+submission, and again when the admin posts the valuation.
 
 ### Payout addresses
 Each member stores a **default payout address** (`users.withdraw_address`) in their Payout
@@ -90,8 +104,12 @@ labelled yield accruals and model price marks, never hidden inside a number. Eve
 what actually happened.
 
 ### Daily yield program
-An operator-configured **daily rate** (Oversight → Yield program, default `0.9%/day`, `0` disables)
-applies to **every member's total value** (cash + holdings) and compounds daily. It is
+Every member is **advised that daily interest is always between 0.5% and 1% per day**, compounded.
+The operator sets a single global rate inside that band (Oversight → Yield program, default
+`0.9%/day`, `0` disables); the admin form and server action reject rates outside `0.5%–1%`. The
+policy notice and the applied rate are shown on every member's dashboard.
+
+The rate applies to **every member's total value** (cash + holdings) and compounds daily. It is
 materialized in two auditable, non-double-counting parts:
 
 - **Cash share** — one `yield` ledger row per member per day: `rate × prior-day cash`, credited

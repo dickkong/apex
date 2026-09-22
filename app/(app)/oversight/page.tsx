@@ -16,6 +16,7 @@ import { Badge, Card, EmptyState, PageHeader, PnlText } from "@/components/ui";
 import { getSessionUser } from "@/lib/auth";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyFull, fmtUnits } from "@/lib/money";
 import { getPriceAsOf } from "@/lib/portfolio";
+import { getWithdrawalLock } from "@/lib/lockdown";
 import { getYieldStats } from "@/lib/yield";
 import {
   getAssetsWithPrice,
@@ -233,11 +234,18 @@ export default async function OversightPage() {
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => (
+                {members.map((m) => {
+                  const lock = getWithdrawalLock(m);
+                  return (
                   <tr key={m.id} className="border-b border-line/60 align-top">
                     <td className="py-2.5 pr-3">
                       <p className="font-medium">{m.name}</p>
                       <p className="text-xs text-muted">{m.email}</p>
+                      {lock.locked ? (
+                        <p className="mt-0.5 text-[11px] text-gold-400">
+                          AML withdrawal lockdown until {lock.untilDate}
+                        </p>
+                      ) : null}
                       {m.withdraw_address ? (
                         <p className="mt-0.5 max-w-56 truncate font-mono text-[11px] text-muted">
                           payout {m.withdraw_address}
@@ -277,7 +285,8 @@ export default async function OversightPage() {
                       </details>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
