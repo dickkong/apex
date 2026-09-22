@@ -1,36 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ApexYield
 
-## Getting Started
+A transparent investment-tracking console. There are no fabricated returns and no referral
+pyramids — every balance change is booked in an append-only ledger. ApexYield records real
+deposits, real sourced prices, and real custody moves, plus one **explicitly agreed product
+rate**: a compounding daily yield applied to every member's total value, booked transparently
+into the ledger and marked into holdings prices.
 
-First, run the development server:
+## Tech stack
+
+- Next.js 16 (App Router, server actions), React 19, TypeScript, Tailwind CSS v4
+- **`node:sqlite`** (built-in `DatabaseSync`) — zero native dependencies, single-file DB
+- `node:crypto` scrypt password hashing; HMAC-signed session cookies — no session tables
+- recharts for portfolio value / allocation charts
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run build
+npm start          # next start, defaults to :3000 (this session: -- -p 3100)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+On first boot the app creates `data/apexyield.db` (WAL, gitignored) and, if no admin exists,
+seeds one:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+email:    admin@apexyield.local
+password: <random 12-hex, printed to the console>
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Credentials are also written to `data/admin-credentials.txt`. Delete `data/` to fully reset.
 
-## Learn More
+## Core design
 
-To learn more about Next.js, take a look at the following resources:
+### Identity first
+- New users register and are **`pending`** until an admin approves them in Oversight.
+- Unverified accounts cannot deposit, buy, sell, or withdraw — every money action is gated on
+  `status = 'verified'`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Honest books (the ledger)
+Every money movement is an entry in a single append-only `ledger` table:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| kind        | cash effect (when posted) |
+| ----------- | ------------------------- |
+| deposit     | `+amount` (USD value)     |
+| withdraw    | `−amount`                 |
+| buy         | `−amount`                 |
+| sell        | `+amount` (proceeds)      |
+| adjustment  | `±amount`, with a note    |
+| yield       | `+amount` (daily accrual) |
 
-## Deploy on Vercel
+Deposits and withdrawals are created as **`pending`** and are only credited/debited after an
+admin posts them. Buys and sells execute the moment you submit them at the latest **verified
+price observation** for that asset. Realized P/L is captured on every sale (`avg_cost` basis).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Crypto deposits
+Capital moves in as a **stablecoin** (USDT, USDC, or any channel an admin enables). An admin
+configures a receiving address per channel and backs it with a real asset (e.g. `USDT` → asset
+"Tether USD"). To deposit, a member sends the coin to that address and files a deposit with the
+transaction hash. When an admin verifies it, the deposit is valued **in USD at a real price
+observation** (`crypto amount × observed price`, e.g. 250 USDT × 1.0000) and posted. No price
+observation for the asset → the deposit cannot be valued, so the admin must record a sourced
+price first. Nothing is priced at a fake or projected rate.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Payout addresses
+Each member stores a **default payout address** (`users.withdraw_address`) in their Payout
+address card. Withdrawal requests default to it but can override with a per-payout destination.
+The destination is captured on the withdrawal's ledger `meta` at request time, shown to the
+admin on the pending-withdrawal card, and displayed on the Transactions page — so every posted
+payout records *where* it went, in the same way deposits record their TXID.
+
+### Real prices only
+Assets are created by an admin, and prices come from **`price_observations`** — dated,
+attribution-sourced entries an admin records. Prices are never invented by staff guesswork; the
+**only** automatic projection in the system is the agreed daily yield mark (a "model" price),
+chained from real observations, stored separately, and always labelled as `model +<rate>%/day`
+so it can never be mistaken for an observed market price. No real price yet → you cannot
+buy/sell that asset.
+
+### Honest returns
+- `net deposits = deposits − withdrawals` (both, only posted)
+- `total value  = cash + Σ units × effective price` (effective price = latest real observation
+  or model yield mark, whichever is newer)
+- `total return = total value − net deposits` (cash-weighted to what you actually funded)
+- `realized P/L` accumulates sale proceeds minus cost basis
+
+The only fabricated growth you will ever see is the **agreed daily yield rate** — visible as
+labelled yield accruals and model price marks, never hidden inside a number. Everything else is
+what actually happened.
+
+### Daily yield program
+An operator-configured **daily rate** (Oversight → Yield program, default `0.9%/day`, `0` disables)
+applies to **every member's total value** (cash + holdings) and compounds daily. It is
+materialized in two auditable, non-double-counting parts:
+
+- **Cash share** — one `yield` ledger row per member per day: `rate × prior-day cash`, credited
+  as spendable cash and shown in Transactions as “Yield accrual”.
+- **Invested share** — `yield_marks` rows chain each asset's valuation forward by `rate` from the
+  most recent real price observation. These marks live in a separate table so real
+  `price_observations` are never overwritten: deposits are **still valued at real observed
+  prices**, while holdings are marked up on the P/L cards. Recording a new real observation
+  re-anchors the chain.
+
+Accrual is idempotent (unique indexes), backfills missed days on the next read, and freezes at
+the rate active on each day — changing the rate never rewrites history. Total value therefore
+tracks `× (1 + rate)` per day exactly.
+
+## Pages
+
+- **Portfolio (`/dashboard`)** — net deposits, total value, total return (absolute + %), cash
+  balance, holdings cost vs market value, a value/cash series chart, and an allocation donut.
+- **Holdings (`/holdings`)** — open positions, units, average cost, latest price, market value,
+  unrealized P/L, buy/sell actions.
+- **Transactions (`/transactions`)** — the complete, immutable ledger with status and P/L
+  on sales; deposit and withdrawal requests.
+- **Oversight (`/oversight`)** — admin only: approve users, post or reject deposits/withdrawals,
+  create assets, record price observations, and audited balance adjustments.
+
+## Project layout
+
+```
+app/
+  (auth)/            login + register
+  (app)/             dashboard, holdings, transactions, oversight
+  actions.ts         all server actions (money moves, verification, admin)
+  globals.css        Tailwind v4 theme (dark maroon/gold)
+components/          forms, charts, nav, UI primitives
+lib/
+  db.ts              schema, migrations, seed, session secret (data/.secret)
+  auth.ts            HMAC session cookie helpers
+  password.ts        scrypt hash/verify
+  money.ts           currency/date/percent formatting (US Dollar)
+  portfolio.ts       cash, holdings, summary, and series math
+  queries.ts         ledger views + oversight queries
+instrumentation.ts   boot-time DB init (so the DB exists before first request)
+data/                runtime: apexyield.db, .secret, admin-credentials.txt (gitignored)
+```
+
+## Accountability notes
+
+- The server secret and passwords never appear in code or commits; `data/` is gitignored.
+- Adjustments require a note and appear in the user's ledger with net effect.
+- Withdrawal requests are capped by the user's *posted* cash balance at request time, and the
+  admin's post step re-checks cash before honouring — so cash can never be posted negative.
+```

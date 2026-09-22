@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0809;
+  --foreground: #f2ede4;
+  --surface: #171110;
+  --surface-2: #201a17;
+  --surface-3: #2a211d;
+  --line: #332a26;
+  --muted: #a49a90;
+  --maroon-950: #260c15;
+  --maroon-900: #3a1220;
+  --maroon-800: #5a1a2e;
+  --maroon-700: #7a2238;
+  --gold-300: #ecdcae;
+  --gold-400: #e2c575;
+  --gold-500: #d4af37;
+  --gold-600: #b28f2a;
+  --positive: #3fae76;
+  --negative: #d9545b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-surface3: var(--surface-3);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-maroon-950: var(--maroon-950);
+  --color-maroon-900: var(--maroon-900);
+  --color-maroon-800: var(--maroon-800);
+  --color-maroon-700: var(--maroon-700);
+  --color-gold-300: var(--gold-300);
+  --color-gold-400: var(--gold-400);
+  --color-gold-500: var(--gold-500);
+  --color-gold-600: var(--gold-600);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-cormorant);
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(90, 26, 46, 0.35), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(180, 143, 42, 0.08), transparent 60%),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-line bg-surface;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface3 px-3 py-2 text-sm text-foreground placeholder:text-muted/60 focus:border-gold-500/60 focus:outline-none focus:ring-1 focus:ring-gold-500/40;
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wider text-muted;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface2 px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-gold-500/50 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-outline {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:border-gold-500/50 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-success {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-positive/40 bg-positive/10 px-3 py-1.5 text-sm font-semibold text-positive transition-colors hover:bg-positive/20 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-negative/40 bg-negative/10 px-3 py-1.5 text-sm font-semibold text-negative transition-colors hover:bg-negative/20 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .stat-label {
+    @apply text-xs font-medium uppercase tracking-wider text-muted;
+  }
+}
+
+.recharts-default-tooltip {
+  border-radius: 0.5rem !important;
+  border: 1px solid var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--foreground);
+  font-size: 0.75rem;
 }
