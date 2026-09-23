@@ -45,74 +45,70 @@ export interface SeriesPoint {
 
 const CASH_CASE = cashCaseSql();
 
-export function getCashBalance(userId: string): number {
-  ensureDailyYield(userId);
-  const db = getDb();
-  const row = db
-    .prepare(`SELECT COALESCE(SUM(${CASH_CASE}), 0) AS cash FROM ledger WHERE user_id = ?`)
-    .get(userId) as { cash: number };
-  return round2(row.cash);
+export async function getCashBalance(userId: string): Promise<number> {
+  await ensureDailyYield(userId);
+  const db = await getDb();
+  const row = await db.get<{ cash: number }>(
+    `SELECT COALESCE(SUM(${CASH_CASE}), 0) AS cash FROM ledger WHERE user_id = $1`,
+    [userId]
+  );
+  return round2(row?.cash ?? 0);
 }
 
-export function getCashAsOf(userId: string, endOfDayIso: string): number {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(${CASH_CASE}), 0) AS cash FROM ledger WHERE user_id = ? AND created_at <= ?`
-    )
-    .get(userId, endOfDayIso) as { cash: number };
-  return round2(row.cash);
+export async function getCashAsOf(userId: string, endOfDayIso: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.get<{ cash: number }>(
+    `SELECT COALESCE(SUM(${CASH_CASE}), 0) AS cash FROM ledger WHERE user_id = $1 AND created_at <= $2`,
+    [userId, endOfDayIso]
+  );
+  return round2(row?.cash ?? 0);
 }
 
-export function getUnitsAsOf(assetId: string, endOfDayIso: string): number {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(CASE
-          WHEN kind = 'buy'  AND status = 'posted' THEN units
-          WHEN kind = 'sell' AND status = 'posted' THEN -units
-          ELSE 0 END), 0) AS u
-       FROM ledger WHERE asset_id = ? AND created_at <= ?`
-    )
-    .get(assetId, endOfDayIso) as { u: number };
-  return row.u;
+export async function getUnitsAsOf(assetId: string, endOfDayIso: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.get<{ u: number }>(
+    `SELECT COALESCE(SUM(CASE
+        WHEN kind = 'buy'  AND status = 'posted' THEN units
+        WHEN kind = 'sell' AND status = 'posted' THEN -units
+        ELSE 0 END), 0) AS u
+     FROM ledger WHERE asset_id = $1 AND created_at <= $2`,
+    [assetId, endOfDayIso]
+  );
+  return row?.u ?? 0;
 }
 
-export function getPriceAsOf(assetId: string, dateOnly: string): PricePoint | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT price, source, obs_date FROM price_observations
-       WHERE asset_id = ? AND obs_date <= ?
-       ORDER BY obs_date DESC, created_at DESC LIMIT 1`
-    )
-    .get(assetId, dateOnly) as { price: number; source: string; obs_date: string } | undefined;
+export async function getPriceAsOf(assetId: string, dateOnly: string): Promise<PricePoint | null> {
+  const db = await getDb();
+  const row = await db.get<{ price: number; source: string; obs_date: string }>(
+    `SELECT price, source, obs_date FROM price_observations
+     WHERE asset_id = $1 AND obs_date <= $2
+     ORDER BY obs_date DESC, created_at DESC LIMIT 1`,
+    [assetId, dateOnly]
+  );
   if (!row) return null;
   return { price: row.price, source: row.source, obs_date: row.obs_date };
 }
 
-export function getNetDeposits(userId: string): number {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(CASE
-          WHEN kind = 'deposit'  AND status = 'posted' THEN amount
-          WHEN kind = 'withdraw' AND status = 'posted' THEN -amount
-          ELSE 0 END), 0) AS net FROM ledger WHERE user_id = ?`
-    )
-    .get(userId) as { net: number };
-  return round2(row.net);
+export async function getNetDeposits(userId: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.get<{ net: number }>(
+    `SELECT COALESCE(SUM(CASE
+        WHEN kind = 'deposit'  AND status = 'posted' THEN amount
+        WHEN kind = 'withdraw' AND status = 'posted' THEN -amount
+        ELSE 0 END), 0) AS net FROM ledger WHERE user_id = $1`,
+    [userId]
+  );
+  return round2(row?.net ?? 0);
 }
 
-export function getRealizedPnl(userId: string): number {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(json_extract(meta, '$.realized_pnl')), 0) AS pnl
-       FROM ledger WHERE user_id = ? AND kind = 'sell' AND status = 'posted'`
-    )
-    .get(userId) as { pnl: number };
-  return round2(row.pnl);
+export async function getRealizedPnl(userId: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.get<{ pnl: number }>(
+    `SELECT COALESCE(SUM((meta::jsonb ->> 'realized_pnl')::float8), 0) AS pnl
+     FROM ledger WHERE user_id = $1 AND kind = 'sell' AND status = 'posted'`,
+    [userId]
+  );
+  return round2(row?.pnl ?? 0);
 }
 
 function todayDateOnly(): string {
@@ -123,44 +119,47 @@ function endOfDayIso(dateOnly: string): string {
   return `${dateOnly}T23:59:59.999Z`;
 }
 
-export function getHoldings(userId: string): HoldingView[] {
-  ensureDailyYield(userId);
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT h.*, a.name, a.ticker, a.category, a.currency
-       FROM holdings h JOIN assets a ON a.id = h.asset_id
-       WHERE h.user_id = ? ORDER BY a.name`
-    )
-    .all(userId) as unknown as Array<
-    HoldingRow & { name: string; ticker: string | null; category: string; currency: string }
-  >;
+export async function getHoldings(userId: string): Promise<HoldingView[]> {
+  await ensureDailyYield(userId);
+  const db = await getDb();
+  const rows = await db.all<HoldingRow & { name: string; ticker: string | null; category: string; currency: string }>(
+    `SELECT h.*, a.name, a.ticker, a.category, a.currency
+     FROM holdings h JOIN assets a ON a.id = h.asset_id
+     WHERE h.user_id = $1 ORDER BY a.name`,
+    [userId]
+  );
 
   const today = todayDateOnly();
-  return rows.map((r) => {
-    const pricePoint = getEffectivePriceAsOf(r.asset_id, today);
-    const price = pricePoint ? pricePoint.price : null;
-    const market_value = price !== null ? round2(r.units * price) : 0;
-    const cost_value = round2(r.units * r.avg_cost);
-    const unrealized = round2(market_value - cost_value);
-    return {
-      ...r,
-      price,
-      price_source: pricePoint?.source ?? null,
-      price_date: pricePoint?.obs_date ?? null,
-      market_value,
-      cost_value,
-      unrealized,
-      unrealized_pct: cost_value > 0 ? unrealized / cost_value : null,
-    };
-  });
+  const views = await Promise.all(
+    rows.map(async (r) => {
+      const pricePoint = await getEffectivePriceAsOf(r.asset_id, today);
+      const price = pricePoint ? pricePoint.price : null;
+      const market_value = price !== null ? round2(r.units * price) : 0;
+      const cost_value = round2(r.units * r.avg_cost);
+      const unrealized = round2(market_value - cost_value);
+      const view: HoldingView = {
+        ...r,
+        price,
+        price_source: pricePoint?.source ?? null,
+        price_date: pricePoint?.obs_date ?? null,
+        market_value,
+        cost_value,
+        unrealized,
+        unrealized_pct: cost_value > 0 ? unrealized / cost_value : null,
+      };
+      return view;
+    })
+  );
+  return views;
 }
 
-export function getSummary(userId: string): Summary {
-  const holdings = getHoldings(userId);
-  const cash = getCashBalance(userId);
-  const netDeposits = getNetDeposits(userId);
-  const realized = getRealizedPnl(userId);
+export async function getSummary(userId: string): Promise<Summary> {
+  const [holdings, cash, netDeposits, realized] = await Promise.all([
+    getHoldings(userId),
+    getCashBalance(userId),
+    getNetDeposits(userId),
+    getRealizedPnl(userId),
+  ]);
   const investedValue = round2(holdings.reduce((s, h) => s + h.market_value, 0));
   const investedCost = round2(holdings.reduce((s, h) => s + h.cost_value, 0));
   const unrealized = round2(holdings.reduce((s, h) => s + h.unrealized, 0));
@@ -182,27 +181,25 @@ export function getSummary(userId: string): Summary {
   };
 }
 
-export function getSeries(userId: string): SeriesPoint[] {
-  ensureDailyYield(userId);
-  const db = getDb();
-  const dbLink = getDb();
+export async function getSeries(userId: string): Promise<SeriesPoint[]> {
+  await ensureDailyYield(userId);
+  const db = await getDb();
 
-  const assetIds = (
-    dbLink
-      .prepare('SELECT DISTINCT asset_id AS id FROM holdings WHERE user_id = ?')
-      .all(userId) as { id: string }[]
-  ).map((r) => r.id);
+  const assetRows = await db.all<{ id: string }>(
+    `SELECT DISTINCT asset_id AS id FROM holdings WHERE user_id = $1`,
+    [userId]
+  );
+  const assetIds = assetRows.map((r) => r.id);
 
-  const times = db
-    .prepare(
-      `SELECT created_at AS t FROM ledger
-       WHERE user_id = ? AND status = 'posted'
-       UNION SELECT obs_date FROM price_observations`
-    )
-    .all(userId) as { t: string }[];
+  const timeRows = await db.all<{ t: string }>(
+    `SELECT created_at AS t FROM ledger
+     WHERE user_id = $1 AND status = 'posted'
+     UNION SELECT obs_date FROM price_observations`,
+    [userId]
+  );
 
   const today = todayDateOnly();
-  const startCandidates = times.map((r) => r.t.slice(0, 10)).filter((d) => d <= today);
+  const startCandidates = timeRows.map((r) => r.t.slice(0, 10)).filter((d) => d <= today);
   if (startCandidates.length === 0) {
     return [{ date: today, value: 0, cash: 0, invested: 0 }];
   }
@@ -222,12 +219,12 @@ export function getSeries(userId: string): SeriesPoint[] {
     const dateOnly = iso.slice(0, 10);
     const eod = endOfDayIso(dateOnly);
 
-    const cash = getCashAsOf(userId, eod);
+    const cash = await getCashAsOf(userId, eod);
     let invested = 0;
     for (const assetId of assetIds) {
-      const units = getUnitsAsOf(assetId, eod);
+      const units = await getUnitsAsOf(assetId, eod);
       if (units === 0) continue;
-      const pricePoint = getEffectivePriceAsOf(assetId, dateOnly);
+      const pricePoint = await getEffectivePriceAsOf(assetId, dateOnly);
       if (pricePoint) invested += units * pricePoint.price;
     }
     points.push({ date: dateOnly, value: round2(cash + invested), cash, invested: round2(invested) });

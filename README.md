@@ -9,7 +9,10 @@ into the ledger and marked into holdings prices.
 ## Tech stack
 
 - Next.js 16 (App Router, server actions), React 19, TypeScript, Tailwind CSS v4
-- **`node:sqlite`** (built-in `DatabaseSync`) — zero native dependencies, single-file DB
+- **Supabase Postgres** via `pg` (the `Pool` API) — no ORM, raw parameterized SQL
+- On first run against an empty database, an existing local `data/apexyield.db`
+  (`node:sqlite`, kept for dev fallback) is **migrated row-for-row into Postgres**
+  (users, assets, prices, holdings, ledger, channels, settings) — ids and timestamps preserved.
 - `node:crypto` scrypt password hashing; HMAC-signed session cookies — no session tables
 - recharts for portfolio value / allocation charts
 
@@ -17,19 +20,39 @@ into the ledger and marked into holdings prices.
 
 ```bash
 npm install
+<set DATABASE_URL + APEX_SESSION_SECRET env vars, see below>
 npm run build
 npm start          # next start, defaults to :3000 (this session: -- -p 3100)
 ```
 
-On first boot the app creates `data/apexyield.db` (WAL, gitignored) and, if no admin exists,
-seeds one:
+Required env vars:
+
+| Variable | Purpose |
+| -------- | ------- |
+| `DATABASE_URL` | Supabase Postgres connection string (Dashboard → Connect → session pooler) |
+| `APEX_SESSION_SECRET` | HMAC session secret (≥ 32 chars). Falls back to `data/.secret` when unset |
+
+Optional: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`,
+`SUPABASE_JWKS_URL` (reserved for a future Supabase Auth integration), `APEX_ADMIN_EMAIL`,
+`APEX_ADMIN_PASSWORD`.
+
+On first boot against an empty database the app seeds an admin (or imports the existing SQLite
+data first, which already contains one):
 
 ```
 email:    admin@apexyield.local
 password: <random 12-hex, printed to the console>
 ```
 
-Credentials are also written to `data/admin-credentials.txt`. Delete `data/` to fully reset.
+Credentials are also written to `data/admin-credentials.txt`. `data/` is gitignored.
+
+### Deploy to Render (Web Service)
+
+- Build command: `npm run build`; Start command: `npm run start`.
+- Set `NODE_VERSION=24` (uses the built-in `node:sqlite` for the one-shot migration).
+- Set the env vars above — `DATABASE_URL` and `APEX_SESSION_SECRET` are required in production
+  (a persistent secret is what keeps sessions valid across deploys).
+- No Render Disk is needed: Supabase is the persistent store.
 
 ## Core design
 

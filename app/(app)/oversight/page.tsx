@@ -36,14 +36,31 @@ export default async function OversightPage() {
   if (!admin) redirect("/login");
   if (admin.role !== "admin") redirect("/dashboard");
 
-  const pendingUsers = getPendingUsers();
-  const pendingDeposits = getLedgerByKind("deposit", "pending");
-  const pendingWithdrawals = getLedgerByKind("withdraw", "pending");
-  const members = getUsersWithBalances();
-  const ledgerHistory = getAllLedger();
-  const assets = getAssetsWithPrice();
-  const depositMethods = getDepositMethods(false);
-  const yieldStats = getYieldStats();
+  const [pendingUsers, pendingDeposits, pendingWithdrawals, members, ledgerHistory, assets, depositMethods, yieldStats] =
+    await Promise.all([
+      getPendingUsers(),
+      getLedgerByKind("deposit", "pending"),
+      getLedgerByKind("withdraw", "pending"),
+      getUsersWithBalances(),
+      getAllLedger(),
+      getAssetsWithPrice(),
+      getDepositMethods(false),
+      getYieldStats(),
+    ]);
+
+  const priceHistories = await Promise.all(assets.map((a) => getPriceHistory(a.id, 10)));
+
+  const previewPrices = new Map<number, number>();
+  await Promise.all(
+    pendingDeposits.map(async (d) => {
+      const meta = parseLedgerMeta(d);
+      const crypto = meta.channel === "crypto";
+      if (crypto && d.asset_id) {
+        const pp = await getPriceAsOf(d.asset_id, new Date().toISOString().slice(0, 10));
+        if (pp) previewPrices.set(d.id, pp.price);
+      }
+    })
+  );
   const pricedAssets = assets.map((a) => ({
     id: a.id,
     name: a.name,
@@ -103,7 +120,7 @@ export default async function OversightPage() {
               {pendingDeposits.map((d) => {
                 const meta = parseLedgerMeta(d);
                 const crypto = meta.channel === "crypto";
-                const previewPrice = crypto && d.asset_id ? getPriceAsOf(d.asset_id, new Date().toISOString().slice(0, 10)) : null;
+                const previewPrice = previewPrices.get(d.id) ?? null;
                 return (
                   <form
                     key={d.id}
@@ -116,9 +133,9 @@ export default async function OversightPage() {
                         {crypto ? (
                           <>
                             +{fmtUnits(d.units ?? 0)} {meta.symbol ?? "coin"}
-                            {previewPrice && previewPrice.price > 0 ? (
+                            {previewPrice && previewPrice > 0 ? (
                               <span className="ml-2 font-normal text-muted">
-                                ≈ {fmtMoneyFull((d.units ?? 0) * previewPrice.price)}
+                                ≈ {fmtMoneyFull((d.units ?? 0) * previewPrice)}
                               </span>
                             ) : (
                               <span className="ml-2 font-normal text-gold-400">
@@ -130,7 +147,7 @@ export default async function OversightPage() {
                           <>+{fmtMoneyFull(d.amount)}</>
                         )}
                       </p>
-                      {crypto && (!previewPrice || previewPrice.price <= 0) ? (
+                      {crypto && (!previewPrice || previewPrice <= 0) ? (
                         <p className="max-w-md pt-1 text-xs text-gold-400">
                           To post this deposit, record a sourced price for {meta.symbol ?? "this asset"}{" "}
                           (e.g. $1.00) in “Assets & price observations” below, then Verify & post.
@@ -454,8 +471,8 @@ export default async function OversightPage() {
             <EmptyState>No assets configured. Use “Add asset” to create the first one.</EmptyState>
           ) : (
             <div className="space-y-3">
-              {assets.map((a) => {
-                const history = getPriceHistory(a.id, 10);
+              {assets.map((a, ai) => {
+                const history = priceHistories[ai] ?? [];
                 return (
                   <details
                     key={a.id}

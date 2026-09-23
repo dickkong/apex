@@ -21,24 +21,22 @@ const LEDGER_SELECT = `
   LEFT JOIN assets a ON a.id = l.asset_id
 `;
 
-export function getRecentLedger(userId: string, limit = 8): LedgerView[] {
-  const db = getDb();
-  return db
-    .prepare(`${LEDGER_SELECT} WHERE l.user_id = ? ORDER BY l.id DESC LIMIT ?`)
-    .all(userId, limit) as unknown as LedgerView[];
+export async function getRecentLedger(userId: string, limit = 8): Promise<LedgerView[]> {
+  const db = await getDb();
+  return db.all<LedgerView>(`${LEDGER_SELECT} WHERE l.user_id = $1 ORDER BY l.id DESC LIMIT $2`, [userId, limit]);
 }
 
-export function getAllLedger(): LedgerView[] {
-  const db = getDb();
-  const rows = db.prepare(`${LEDGER_SELECT} ORDER BY l.id DESC`).all() as unknown as LedgerView[];
+export async function getAllLedger(): Promise<LedgerView[]> {
+  const db = await getDb();
+  const rows = await db.all<LedgerView>(`${LEDGER_SELECT} ORDER BY l.id DESC`);
   return rows.map((r) => ({ ...r }));
 }
 
-export function getLedgerByKind(kind: 'deposit' | 'withdraw', status: 'pending' | 'posted'): LedgerView[] {
-  const db = getDb();
-  return db
-    .prepare(`${LEDGER_SELECT} WHERE l.kind = ? AND l.status = ? ORDER BY l.id DESC`)
-    .all(kind, status) as unknown as LedgerView[];
+export async function getLedgerByKind(kind: 'deposit' | 'withdraw', status: 'pending' | 'posted'): Promise<
+  LedgerView[]
+> {
+  const db = await getDb();
+  return db.all<LedgerView>(`${LEDGER_SELECT} WHERE l.kind = $1 AND l.status = $2 ORDER BY l.id DESC`, [kind, status]);
 }
 
 export { parseLedgerMeta } from './ledger-meta';
@@ -50,21 +48,20 @@ export interface DepositMethodView extends DepositMethodRow {
   asset_price: number | null;
 }
 
-export function getDepositMethods(onlyEnabled = false): DepositMethodView[] {
-  const db = getDb();
+export async function getDepositMethods(onlyEnabled = false): Promise<DepositMethodView[]> {
+  const db = await getDb();
   const today = todayDateOnly();
-  const rows = db
-    .prepare(
-      `SELECT dm.*, a.name AS asset_name, a.ticker AS asset_ticker,
-         (SELECT p.price FROM price_observations p
-           WHERE p.asset_id = a.id AND p.obs_date <= ?
-           ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS asset_price
-       FROM deposit_methods dm
-       JOIN assets a ON a.id = dm.asset_id
-       WHERE (? = 0 OR dm.enabled = 1)
-       ORDER BY dm.symbol`
-    )
-    .all(today, onlyEnabled ? 1 : 0) as unknown as Array<Record<string, unknown>>;
+  const rows = await db.all<Record<string, unknown>>(
+    `SELECT dm.*, a.name AS asset_name, a.ticker AS asset_ticker,
+       (SELECT p.price FROM price_observations p
+         WHERE p.asset_id = a.id AND p.obs_date <= $1
+         ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS asset_price
+     FROM deposit_methods dm
+     JOIN assets a ON a.id = dm.asset_id
+     WHERE ($2 = 0 OR dm.enabled = 1)
+     ORDER BY dm.symbol`,
+    [today, onlyEnabled ? 1 : 0]
+  );
   return rows.map((r) => ({ ...r }) as unknown as DepositMethodView);
 }
 
@@ -83,22 +80,21 @@ export interface AssetView {
   obs_count: number;
 }
 
-export function getAssetsWithPrice(): AssetView[] {
-  const db = getDb();
+export async function getAssetsWithPrice(): Promise<AssetView[]> {
+  const db = await getDb();
   const today = todayDateOnly();
-  return db
-    .prepare(
-      `SELECT a.*,
-         (SELECT p.price FROM price_observations p
-           WHERE p.asset_id = a.id AND p.obs_date <= ? ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price,
-         (SELECT p.obs_date FROM price_observations p
-           WHERE p.asset_id = a.id AND p.obs_date <= ? ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price_date,
-         (SELECT p.source FROM price_observations p
-           WHERE p.asset_id = a.id AND p.obs_date <= ? ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price_source,
-         (SELECT COUNT(*) FROM price_observations p WHERE p.asset_id = a.id) AS obs_count
-       FROM assets a ORDER BY a.name`
-    )
-    .all(today, today, today) as unknown as AssetView[];
+  return db.all<AssetView>(
+    `SELECT a.*,
+       (SELECT p.price FROM price_observations p
+         WHERE p.asset_id = a.id AND p.obs_date <= $1 ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price,
+       (SELECT p.obs_date FROM price_observations p
+         WHERE p.asset_id = a.id AND p.obs_date <= $1 ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price_date,
+       (SELECT p.source FROM price_observations p
+         WHERE p.asset_id = a.id AND p.obs_date <= $1 ORDER BY p.obs_date DESC, p.created_at DESC LIMIT 1) AS price_source,
+       (SELECT COUNT(*)::int FROM price_observations p WHERE p.asset_id = a.id) AS obs_count
+     FROM assets a ORDER BY a.name`,
+    [today]
+  );
 }
 
 export interface PriceHistoryRow {
@@ -108,25 +104,18 @@ export interface PriceHistoryRow {
   created_at: string;
 }
 
-export function getPriceHistory(assetId: string, limit = 12): PriceHistoryRow[] {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT obs_date, price, source, created_at FROM price_observations
-       WHERE asset_id = ? ORDER BY obs_date DESC, created_at DESC LIMIT ?`
-    )
-    .all(assetId, limit) as unknown as PriceHistoryRow[];
+export async function getPriceHistory(assetId: string, limit = 12): Promise<PriceHistoryRow[]> {
+  const db = await getDb();
+  return db.all<PriceHistoryRow>(
+    `SELECT obs_date, price, source, created_at FROM price_observations
+     WHERE asset_id = $1 ORDER BY obs_date DESC, created_at DESC LIMIT $2`,
+    [assetId, limit]
+  );
 }
 
-export interface PendingUser extends UserRow {
-  _unused?: never;
-}
-
-export function getPendingUsers(): UserRow[] {
-  const db = getDb();
-  return db
-    .prepare(`SELECT * FROM users WHERE status = 'pending' ORDER BY created_at`)
-    .all() as unknown as UserRow[];
+export async function getPendingUsers(): Promise<UserRow[]> {
+  const db = await getDb();
+  return db.all<UserRow>(`SELECT * FROM users WHERE status = 'pending' ORDER BY created_at`);
 }
 
 export interface UserBalanceRow {
@@ -142,19 +131,16 @@ export interface UserBalanceRow {
   net_deposits: number;
 }
 
-export function getUsersWithBalances(): UserBalanceRow[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, email, name, role, status, verified_at, created_at, withdraw_address FROM users ORDER BY created_at`
-    )
-    .all() as unknown as Pick<
-      UserBalanceRow,
-      'id' | 'email' | 'name' | 'role' | 'status' | 'verified_at' | 'created_at' | 'withdraw_address'
-    >[];
-  return rows.map((r) => ({
-    ...r,
-    cash: getCashBalance(r.id),
-    net_deposits: getNetDeposits(r.id),
-  }));
+export async function getUsersWithBalances(): Promise<UserBalanceRow[]> {
+  const db = await getDb();
+  const rows = await db.all<
+    Pick<UserBalanceRow, 'id' | 'email' | 'name' | 'role' | 'status' | 'verified_at' | 'created_at' | 'withdraw_address'>
+  >(`SELECT id, email, name, role, status, verified_at, created_at, withdraw_address FROM users ORDER BY created_at`);
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const [cash, net_deposits] = await Promise.all([getCashBalance(r.id), getNetDeposits(r.id)]);
+      return { ...r, cash, net_deposits };
+    })
+  );
 }

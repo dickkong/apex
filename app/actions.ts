@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createSession, destroySession, getSessionUser } from '@/lib/auth';
-import { getDb, type UserRow } from '@/lib/db';
+import { getDb, getPool, PgRunner, type UserRow } from '@/lib/db';
 import { round2 } from '@/lib/money';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { getCashBalance, getPriceAsOf } from '@/lib/portfolio';
@@ -56,8 +56,8 @@ async function requireAdmin(): Promise<UserRow | null> {
   return user;
 }
 
-function postLedger(
-  db: ReturnType<typeof getDb>,
+async function postLedger(
+  db: PgRunner,
   entry: {
     user_id: string;
     kind: 'deposit' | 'withdraw' | 'buy' | 'sell' | 'adjustment';
@@ -70,24 +70,25 @@ function postLedger(
     resolved_by?: string;
   },
   resolvedAt: string | null = nowIso()
-) {
+): Promise<void> {
   const status = entry.status ?? 'posted';
   const resolved = status === 'posted' && resolvedAt ? resolvedAt : null;
-  db.prepare(
+  await db.run(
     `INSERT INTO ledger (user_id, kind, amount, status, note, asset_id, units, meta, created_at, resolved_at, resolved_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    entry.user_id,
-    entry.kind,
-    entry.amount,
-    status,
-    entry.note ?? null,
-    entry.asset_id ?? null,
-    entry.units ?? null,
-    entry.meta ? JSON.stringify(entry.meta) : null,
-    nowIso(),
-    resolved,
-    entry.resolved_by ?? null
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      entry.user_id,
+      entry.kind,
+      entry.amount,
+      status,
+      entry.note ?? null,
+      entry.asset_id ?? null,
+      entry.units ?? null,
+      entry.meta ? JSON.stringify(entry.meta) : null,
+      nowIso(),
+      resolved,
+      entry.resolved_by ?? null,
+    ]
   );
 }
 
@@ -103,17 +104,18 @@ export async function registerUserAction(
   if (!EMAIL_RE.test(email)) return { ok: false, message: 'Enter a valid email address.' };
   if (password.length < 8) return { ok: false, message: 'Password must be at least 8 characters.' };
 
-  const db = getDb();
-  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) {
+  const db = await getDb();
+  if (await db.get(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [email])) {
     return { ok: false, message: 'An account with this email already exists.' };
   }
 
   const { salt, hash } = hashPassword(password);
   const id = randomUUID();
-  db.prepare(
+  await db.run(
     `INSERT INTO users (id, email, name, role, status, password_hash, salt, created_at)
-     VALUES (?, ?, ?, 'investor', 'pending', ?, ?, ?)`
-  ).run(id, email, name, hash, salt, nowIso());
+     VALUES ($1, $2, $3, 'investor', 'pending', $4, $5, $6)`,
+    [id, email, name, hash, salt, nowIso()]
+  );
 
   await createSession(id);
   redirect('/dashboard');
@@ -125,8 +127,8 @@ export async function loginUserAction(_prev: ActionState, formData: FormData): P
 
   if (!email || !password) return { ok: false, message: 'Enter your email and password.' };
 
-  const db = getDb();
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+  const db = await getDb();
+  const user = await db.get<UserRow>(`SELECT * FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
   if (!user || !verifyPassword(password, user.salt, user.password_hash)) {
     return { ok: false, message: 'Incorrect email or password.' };
   }
@@ -155,22 +157,19 @@ export async function submitDepositAction(
     return { ok: false, message: 'Enter the transaction hash (TXID) of your transfer.' };
   }
 
-  const db = getDb();
-  const method = db
-    .prepare(
-      `SELECT dm.symbol, dm.name, dm.asset_id, dm.network, dm.wallet_address
-       FROM deposit_methods dm
-       WHERE dm.id = ? AND dm.enabled = 1`
-    )
-    .get(methodId) as
-    | {
-        symbol: string;
-        name: string;
-        asset_id: string;
-        network: string;
-        wallet_address: string;
-      }
-    | undefined;
+  const db = await getDb();
+  const method = await db.get<{
+    symbol: string;
+    name: string;
+    asset_id: string;
+    network: string;
+    wallet_address: string;
+  }>(
+    `SELECT dm.symbol, dm.name, dm.asset_id, dm.network, dm.wallet_address
+     FROM deposit_methods dm
+     WHERE dm.id = $1 AND dm.enabled = 1`,
+    [methodId]
+  );
   if (!method) return { ok: false, message: 'Choose a deposit channel.' };
   if (!method.wallet_address) {
     return {
@@ -179,7 +178,7 @@ export async function submitDepositAction(
     };
   }
 
-  const pricePoint = getPriceAsOf(method.asset_id, todayDateOnly());
+  const pricePoint = await getPriceAsOf(method.asset_id, todayDateOnly());
   if (pricePoint && pricePoint.price > 0) {
     const estimate = Math.round((qty.amount * pricePoint.price) * 1e6) / 1e6;
     const limitError = depositValueError(estimate);
@@ -187,7 +186,7 @@ export async function submitDepositAction(
   }
 
   const note = readForm(formData, 'note') || null;
-  postLedger(
+  await postLedger(
     db,
     {
       user_id: user.id,
@@ -237,7 +236,7 @@ export async function requestWithdrawalAction(
     };
   }
 
-  if (parsed.amount > getCashBalance(user.id) + 0.001) {
+  if (parsed.amount > (await getCashBalance(user.id)) + 0.001) {
     return { ok: false, message: 'Requested amount exceeds your available cash balance.' };
   }
 
@@ -250,8 +249,8 @@ export async function requestWithdrawalAction(
   }
 
   const note = readForm(formData, 'note') || null;
-  const db = getDb();
-  postLedger(
+  const db = await getDb();
+  await postLedger(
     db,
     {
       user_id: user.id,
@@ -282,8 +281,8 @@ export async function updatePayoutAddressAction(
     return { ok: false, message: 'Enter a payout address between 3 and 200 characters.' };
   }
 
-  const db = getDb();
-  db.prepare('UPDATE users SET withdraw_address = ? WHERE id = ?').run(address, user.id);
+  const db = await getDb();
+  await db.run(`UPDATE users SET withdraw_address = $1 WHERE id = $2`, [address, user.id]);
 
   revalidatePath('/dashboard');
   revalidatePath('/oversight');
@@ -302,28 +301,31 @@ export async function buyAssetAction(
   const parsed = parseAmount(readForm(formData, 'amount'));
   if (parsed.error) return { ok: false, message: parsed.error };
 
-  ensureDailyYield(user.id);
+  await ensureDailyYield(user.id);
 
-  const db = getDb();
-  const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(assetId) as
-    | { id: string; name: string; currency: string }
-    | undefined;
+  const db = await getDb();
+  const asset = await db.get<{ id: string; name: string; currency: string }>(
+    `SELECT * FROM assets WHERE id = $1`,
+    [assetId]
+  );
   if (!asset) return { ok: false, message: 'Choose an asset.' };
 
-  const pricePoint = getEffectivePriceAsOf(assetId, todayDateOnly());
+  const pricePoint = await getEffectivePriceAsOf(assetId, todayDateOnly());
   if (!pricePoint || pricePoint.price <= 0) {
     return { ok: false, message: 'This asset has no price observation yet. An admin must add one.' };
   }
 
-  const cash = getCashBalance(user.id);
+  const cash = await getCashBalance(user.id);
   if (parsed.amount > cash + 0.001) {
     return { ok: false, message: 'Insufficient cash balance for this purchase.' };
   }
 
   const units = parsed.amount / pricePoint.price;
-  db.exec('BEGIN');
+  const client = await getPool().connect();
   try {
-    postLedger(db, {
+    await client.query('BEGIN');
+    const tx = new PgRunner(client);
+    await postLedger(tx, {
       user_id: user.id,
       kind: 'buy',
       amount: parsed.amount,
@@ -334,30 +336,28 @@ export async function buyAssetAction(
       resolved_by: user.id,
     });
 
-    const existing = db
-      .prepare('SELECT * FROM holdings WHERE user_id = ? AND asset_id = ?')
-      .get(user.id, assetId) as
-      | { id: string; units: number; avg_cost: number }
-      | undefined;
+    const existing = await tx.get<{ id: string; units: number; avg_cost: number }>(
+      `SELECT * FROM holdings WHERE user_id = $1 AND asset_id = $2`,
+      [user.id, assetId]
+    );
 
     if (existing) {
       const newUnits = existing.units + units;
       const newAvg = (existing.units * existing.avg_cost + parsed.amount) / newUnits;
-      db.prepare('UPDATE holdings SET units = ?, avg_cost = ? WHERE id = ?').run(
-        newUnits,
-        newAvg,
-        existing.id
-      );
+      await tx.run(`UPDATE holdings SET units = $1, avg_cost = $2 WHERE id = $3`, [newUnits, newAvg, existing.id]);
     } else {
-      db.prepare(
-        'INSERT INTO holdings (id, user_id, asset_id, units, avg_cost, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(randomUUID(), user.id, assetId, units, parsed.amount / units, nowIso());
+      await tx.run(
+        `INSERT INTO holdings (id, user_id, asset_id, units, avg_cost, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [randomUUID(), user.id, assetId, units, parsed.amount / units, nowIso()]
+      );
     }
-    db.exec('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    db.exec('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('buyAssetAction failed:', err);
     return { ok: false, message: 'Purchase failed due to an internal error.' };
+  } finally {
+    client.release();
   }
 
   revalidatePath('/dashboard');
@@ -379,29 +379,30 @@ export async function sellAssetAction(
     return { ok: false, message: 'Enter a positive number of units.' };
   }
 
-  const db = getDb();
-  const holding = db
-    .prepare('SELECT * FROM holdings WHERE id = ? AND user_id = ?')
-    .get(holdingId, user.id) as
-    | { id: string; asset_id: string; units: number; avg_cost: number }
-    | undefined;
+  const db = await getDb();
+  const holding = await db.get<{ id: string; asset_id: string; units: number; avg_cost: number }>(
+    `SELECT * FROM holdings WHERE id = $1 AND user_id = $2`,
+    [holdingId, user.id]
+  );
   if (!holding) return { ok: false, message: 'Holding not found.' };
 
   if (unitsInput > holding.units + 1e-9) {
     return { ok: false, message: 'You do not hold that many units.' };
   }
 
-  ensureDailyYield(user.id);
+  await ensureDailyYield(user.id);
 
-  const pricePoint = getEffectivePriceAsOf(holding.asset_id, todayDateOnly());
+  const pricePoint = await getEffectivePriceAsOf(holding.asset_id, todayDateOnly());
   if (!pricePoint) return { ok: false, message: 'This asset has no price observation yet.' };
 
   const proceeds = round2(unitsInput * pricePoint.price);
   const realized = round2((pricePoint.price - holding.avg_cost) * unitsInput);
 
-  db.exec('BEGIN');
+  const client = await getPool().connect();
   try {
-    postLedger(db, {
+    await client.query('BEGIN');
+    const tx = new PgRunner(client);
+    await postLedger(tx, {
       user_id: user.id,
       kind: 'sell',
       amount: proceeds,
@@ -414,15 +415,17 @@ export async function sellAssetAction(
 
     const remaining = holding.units - unitsInput;
     if (remaining < 1e-9) {
-      db.prepare('DELETE FROM holdings WHERE id = ?').run(holding.id);
+      await tx.run(`DELETE FROM holdings WHERE id = $1`, [holding.id]);
     } else {
-      db.prepare('UPDATE holdings SET units = ? WHERE id = ?').run(remaining, holding.id);
+      await tx.run(`UPDATE holdings SET units = $1 WHERE id = $2`, [remaining, holding.id]);
     }
-    db.exec('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    db.exec('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('sellAssetAction failed:', err);
     return { ok: false, message: 'Sale failed due to an internal error.' };
+  } finally {
+    client.release();
   }
 
   revalidatePath('/dashboard');
@@ -440,12 +443,12 @@ export async function verifyUserAction(formData: FormData): Promise<void> {
   const status = decision === 'approve' ? 'verified' : decision === 'reject' ? 'rejected' : null;
   if (!userId || !status) throw new Error('Missing verification parameters.');
 
-  const db = getDb();
-  db.prepare('UPDATE users SET status = ?, verified_at = ? WHERE id = ?').run(
+  const db = await getDb();
+  await db.run(`UPDATE users SET status = $1, verified_at = $2 WHERE id = $3`, [
     status,
     status === 'verified' ? nowIso() : null,
-    userId
-  );
+    userId,
+  ]);
   revalidatePath('/oversight');
 }
 
@@ -460,19 +463,17 @@ export async function resolveDepositAction(formData: FormData): Promise<void> {
     throw new Error('Missing resolution parameters.');
   }
 
-  const db = getDb();
-  const ledger = db.prepare('SELECT * FROM ledger WHERE id = ? AND kind = ?').get(id, 'deposit') as
-    | {
-        id: number;
-        user_id: string;
-        amount: number;
-        status: string;
-        asset_id: string | null;
-        units: number | null;
-        meta: string | null;
-        note: string | null;
-      }
-    | undefined;
+  const db = await getDb();
+  const ledger = await db.get<{
+    id: number;
+    user_id: string;
+    amount: number;
+    status: string;
+    asset_id: string | null;
+    units: number | null;
+    meta: string | null;
+    note: string | null;
+  }>(`SELECT * FROM ledger WHERE id = $1 AND kind = $2`, [id, 'deposit']);
   if (!ledger) throw new Error('Deposit not found.');
   if (ledger.status !== 'pending') throw new Error('This deposit was already resolved.');
 
@@ -486,7 +487,7 @@ export async function resolveDepositAction(formData: FormData): Promise<void> {
     }
 
     if (meta.channel === 'crypto' && ledger.asset_id) {
-      const pricePoint = getPriceAsOf(ledger.asset_id, todayDateOnly());
+      const pricePoint = await getPriceAsOf(ledger.asset_id, todayDateOnly());
       if (!pricePoint || pricePoint.price <= 0) {
         const symbol = typeof meta.symbol === 'string' ? meta.symbol : 'the asset';
         throw new Error(
@@ -497,14 +498,15 @@ export async function resolveDepositAction(formData: FormData): Promise<void> {
       const limitError = depositValueError(postAmount);
       if (limitError) throw new Error(limitError);
       meta.valuation = { price: pricePoint.price, source: pricePoint.source, obs_date: pricePoint.obs_date };
-      db.prepare('UPDATE ledger SET meta = ? WHERE id = ?').run(JSON.stringify(meta), ledger.id);
+      await db.run(`UPDATE ledger SET meta = $1 WHERE id = $2`, [JSON.stringify(meta), ledger.id]);
     }
   }
 
   const status = decision === 'approve' ? 'posted' : 'rejected';
-  db.prepare(
-    'UPDATE ledger SET status = ?, amount = ?, resolved_at = ?, resolved_by = ?, note = ? WHERE id = ?'
-  ).run(status, postAmount, nowIso(), admin.id, note || null, ledger.id);
+  await db.run(
+    `UPDATE ledger SET status = $1, amount = $2, resolved_at = $3, resolved_by = $4, note = $5 WHERE id = $6`,
+    [status, postAmount, nowIso(), admin.id, note || null, ledger.id]
+  );
 
   revalidatePath('/dashboard');
   revalidatePath('/transactions');
@@ -522,25 +524,26 @@ export async function resolveWithdrawalAction(formData: FormData): Promise<void>
     throw new Error('Missing resolution parameters.');
   }
 
-  const db = getDb();
-  const ledger = db.prepare('SELECT * FROM ledger WHERE id = ? AND kind = ?').get(id, 'withdraw') as
-    | { id: number; user_id: string; amount: number; status: string }
-    | undefined;
+  const db = await getDb();
+  const ledger = await db.get<{ id: number; user_id: string; amount: number; status: string }>(
+    `SELECT * FROM ledger WHERE id = $1 AND kind = $2`,
+    [id, 'withdraw']
+  );
   if (!ledger) throw new Error('Withdrawal not found.');
   if (ledger.status !== 'pending') throw new Error('This withdrawal was already resolved.');
 
-  if (decision === 'approve' && ledger.amount > getCashBalance(ledger.user_id) + 0.001) {
+  if (decision === 'approve' && ledger.amount > (await getCashBalance(ledger.user_id)) + 0.001) {
     throw new Error('Insufficient cash to honour this withdrawal. Reject it instead.');
   }
 
   const status = decision === 'approve' ? 'posted' : 'rejected';
-  db.prepare('UPDATE ledger SET status = ?, resolved_at = ?, resolved_by = ?, note = ? WHERE id = ?').run(
+  await db.run(`UPDATE ledger SET status = $1, resolved_at = $2, resolved_by = $3, note = $4 WHERE id = $5`, [
     status,
     nowIso(),
     admin.id,
     note || null,
-    ledger.id
-  );
+    ledger.id,
+  ]);
 
   revalidatePath('/dashboard');
   revalidatePath('/transactions');
@@ -558,11 +561,12 @@ export async function createAssetAction(formData: FormData): Promise<void> {
   const description = readForm(formData, 'description') || null;
   if (!name) throw new Error('Asset name is required.');
 
-  const db = getDb();
-  db.prepare(
+  const db = await getDb();
+  await db.run(
     `INSERT INTO assets (id, name, ticker, category, isin, currency, description, created_at)
-     VALUES (?, ?, ?, ?, ?, 'USD', ?, ?)`
-  ).run(randomUUID(), name, ticker, category, isin, description, nowIso());
+     VALUES ($1, $2, $3, $4, $5, 'USD', $6, $7)`,
+    [randomUUID(), name, ticker, category, isin, description, nowIso()]
+  );
 
   revalidatePath('/oversight');
 }
@@ -581,18 +585,19 @@ export async function addAssetPriceAction(
   if (parsed.error) return { ok: false, message: parsed.error };
   if (!DATE_RE.test(date)) return { ok: false, message: 'Date must be YYYY-MM-DD.' };
 
-  const db = getDb();
-  const asset = db.prepare('SELECT id FROM assets WHERE id = ?').get(assetId);
+  const db = await getDb();
+  const asset = await db.get(`SELECT id FROM assets WHERE id = $1`, [assetId]);
   if (!asset) return { ok: false, message: 'Choose an asset.' };
 
-  db.prepare(
+  await db.run(
     `INSERT INTO price_observations (id, asset_id, obs_date, price, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(asset_id, obs_date) DO UPDATE SET
-       price = excluded.price, source = excluded.source, created_at = excluded.created_at`
-  ).run(randomUUID(), assetId, date, parsed.amount, source, nowIso());
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (asset_id, obs_date) DO UPDATE SET
+       price = EXCLUDED.price, source = EXCLUDED.source, created_at = EXCLUDED.created_at`,
+    [randomUUID(), assetId, date, parsed.amount, source, nowIso()]
+  );
 
-  db.prepare('DELETE FROM yield_marks WHERE asset_id = ? AND mark_date >= ?').run(assetId, date);
+  await db.run(`DELETE FROM yield_marks WHERE asset_id = $1 AND mark_date >= $2`, [assetId, date]);
 
   revalidatePath('/oversight');
   revalidatePath('/dashboard');
@@ -618,7 +623,7 @@ export async function updateYieldSettingsAction(
     };
   }
 
-  setDailyYieldRate(Math.round(pct * 100) / 100 / 100);
+  await setDailyYieldRate(Math.round(pct * 100) / 100 / 100);
 
   revalidatePath('/oversight');
   revalidatePath('/dashboard');
@@ -647,11 +652,11 @@ export async function adminAdjustBalanceAction(
     return { ok: false, message: 'Enter a non-zero signed amount.' };
   }
 
-  const db = getDb();
-  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  const db = await getDb();
+  const user = await db.get(`SELECT id FROM users WHERE id = $1`, [userId]);
   if (!user) return { ok: false, message: 'User not found.' };
 
-  postLedger(db, {
+  await postLedger(db, {
     user_id: userId,
     kind: 'adjustment',
     amount: round2(signed),
@@ -677,15 +682,16 @@ export async function createDepositMethodAction(formData: FormData): Promise<voi
   const instructions = readForm(formData, 'instructions') || null;
   if (!symbol || !name || !assetId) throw new Error('Symbol, name and asset are required.');
 
-  const db = getDb();
-  if (db.prepare('SELECT id FROM deposit_methods WHERE symbol = ? COLLATE NOCASE').get(symbol)) {
+  const db = await getDb();
+  if (await db.get(`SELECT id FROM deposit_methods WHERE LOWER(symbol) = LOWER($1)`, [symbol])) {
     throw new Error(`A channel already exists for ${symbol}.`);
   }
 
-  db.prepare(
+  await db.run(
     `INSERT INTO deposit_methods (id, symbol, name, asset_id, wallet_address, network, instructions, enabled, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
-  ).run(randomUUID(), symbol, name, assetId, walletAddress, network, instructions, nowIso());
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8)`,
+    [randomUUID(), symbol, name, assetId, walletAddress, network, instructions, nowIso()]
+  );
 
   revalidatePath('/oversight');
 }
@@ -701,10 +707,11 @@ export async function updateDepositMethodAction(formData: FormData): Promise<voi
   const enabled = readForm(formData, 'enabled') === 'on' ? 1 : 0;
   if (!methodId) throw new Error('Missing channel.');
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE deposit_methods SET wallet_address = ?, network = ?, instructions = ?, enabled = ? WHERE id = ?`
-  ).run(walletAddress, network, instructions, enabled, methodId);
+  const db = await getDb();
+  await db.run(
+    `UPDATE deposit_methods SET wallet_address = $1, network = $2, instructions = $3, enabled = $4 WHERE id = $5`,
+    [walletAddress, network, instructions, enabled, methodId]
+  );
 
   revalidatePath('/oversight');
   revalidatePath('/dashboard');

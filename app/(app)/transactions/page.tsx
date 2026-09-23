@@ -41,7 +41,7 @@ export default async function TransactionsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const ledger = getAllLedger().filter((row) => row.user_id === user.id);
+  const ledger = (await getAllLedger()).filter((row) => row.user_id === user.id);
 
   return (
     <div className="mx-auto max-w-6xl">

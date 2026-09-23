@@ -52,7 +52,7 @@ export async function getSessionUser(): Promise<UserRow | null> {
   if (!Number.isFinite(exp) || exp < Date.now()) return null;
   if (!verifySig(`${userId}.${expStr}`, sig)) return null;
 
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as UserRow | undefined;
+  const db = await getDb();
+  const row = await db.get<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
   return row ?? null;
 }

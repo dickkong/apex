@@ -38,14 +38,15 @@ export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const summary = getSummary(user.id);
-  const series = getSeries(user.id);
-  const recent = getRecentLedger(user.id, 8);
-  const channels = getDepositMethods(true);
-
-  const verified = user.status === "verified";
-  const yieldRate = getDailyYieldRate();
+const [summary, series, recent, channels, yieldRate] = await Promise.all([
+    getSummary(user.id),
+    getSeries(user.id),
+    getRecentLedger(user.id, 8),
+    getDepositMethods(true),
+    getDailyYieldRate(),
+  ]);
   const lock = getWithdrawalLock(user);
+  const verified = user.status === "verified";
 
   return (
     <div className="mx-auto max-w-6xl">

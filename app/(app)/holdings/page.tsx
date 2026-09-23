@@ -15,23 +15,25 @@ export default async function HoldingsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const summary = getSummary(user.id);
+  const summary = await getSummary(user.id);
   const verified = user.status === "verified";
 
   const today = new Date().toISOString().slice(0, 10);
-  const assets = getAssetsWithPrice();
-  const assetOptions: AssetOption[] = assets
-    .filter((a) => a.price !== null)
-    .map((a) => {
-      const eff = getEffectivePriceAsOf(a.id, today);
-      return {
-        id: a.id,
-        name: a.name,
-        ticker: a.ticker,
-        price: eff?.price ?? a.price,
-        priceDate: eff?.obs_date ?? a.price_date,
-      };
-    });
+  const assets = await getAssetsWithPrice();
+  const assetOptions: AssetOption[] = await Promise.all(
+    assets
+      .filter((a) => a.price !== null)
+      .map(async (a) => {
+        const eff = await getEffectivePriceAsOf(a.id, today);
+        return {
+          id: a.id,
+          name: a.name,
+          ticker: a.ticker,
+          price: eff?.price ?? a.price,
+          priceDate: eff?.obs_date ?? a.price_date,
+        };
+      })
+  );
   const unpriced = assets.filter((a) => a.price === null);
 
   return (
