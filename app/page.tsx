@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 
 export const metadata = {
-  title: "ApexYield — investment platform",
+  title: "Apex Yield Profit Render Inc — investment platform",
 };
 
 export default async function Home() {
@@ -20,17 +20,17 @@ export default async function Home() {
       <div className="relative w-full max-w-2xl space-y-6">
         <div className="text-center">
           <div className="text-4xl font-semibold tracking-tight text-gold-500">◆</div>
-          <h1 className="mt-3 font-display text-4xl font-semibold tracking-wide text-foreground">
-            ApexYield
+          <h1 className="mt-3 font-display text-3xl font-semibold leading-tight tracking-wide text-foreground sm:text-4xl">
+            Apex Yield Profit Render Inc
           </h1>
           <p className="mt-2 text-sm text-muted">An investment platform built on real deposits and honest accruals.</p>
         </div>
 
         <div className="card space-y-5 p-6 sm:p-8">
           <div>
-            <h2 className="text-base font-semibold text-foreground">What is ApexYield?</h2>
+            <h2 className="text-base font-semibold text-foreground">What is Apex Yield Profit Render Inc?</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              ApexYield is an investment platform that returns daily interest on{" "}
+              Apex Yield Profit Render Inc is an investment platform that returns daily interest on{" "}
               <span className="font-semibold text-foreground">all capital you deposit</span>. Your
               balance grows every day, compounded, at a daily rate that is always between{" "}
               <span className="font-semibold text-gold-300">0.5% and 1%</span>. Every accrual is

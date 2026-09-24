@@ -20,9 +20,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen md:flex">
       <aside className="flex flex-col border-b border-line bg-surface/60 md:min-h-screen md:w-64 md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-5 py-5">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-lg text-gold-500">◆</span>
-            <span className="font-display text-xl font-semibold tracking-wide">ApexYield</span>
+          <Link href="/dashboard" className="flex items-start gap-2">
+            <span className="mt-0.5 text-lg text-gold-500">◆</span>
+            <span className="font-display text-lg font-semibold leading-tight tracking-wide">
+              Apex Yield Profit Render Inc
+            </span>
           </Link>
         </div>
 

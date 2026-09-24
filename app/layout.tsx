@@ -21,8 +21,8 @@ const display = Cormorant_Garamond({
 
 export const metadata: Metadata = {
   title: {
-    default: "ApexYield · Portfolio Console",
-    template: "%s · ApexYield",
+    default: "Apex Yield Profit Render Inc · Portfolio Console",
+    template: "%s · Apex Yield Profit Render Inc",
   },
   description:
     "A transparent investment tracking and portfolio console. Your deposits, your holdings, real prices, honest returns.",

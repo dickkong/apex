@@ -12,8 +12,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       <div className="relative w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="text-4xl font-semibold tracking-tight text-gold-500">◆</div>
-          <h1 className="mt-3 font-display text-4xl font-semibold tracking-wide text-foreground">
-            ApexYield
+          <h1 className="mt-3 font-display text-3xl font-semibold leading-tight tracking-wide text-foreground sm:text-4xl">
+            Apex Yield Profit Render Inc
           </h1>
           <p className="mt-2 text-sm text-muted">
             A transparent portfolio console — real deposits, real prices, honest returns.

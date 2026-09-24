@@ -1,4 +1,4 @@
-# ApexYield
+# Apex Yield Profit Render Inc
 
 A transparent investment-tracking console. There are no fabricated returns and no referral
 pyramids — every balance change is booked in an append-only ledger. ApexYield records real
