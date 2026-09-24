@@ -9,6 +9,7 @@ import {
 } from "@/app/actions";
 import { AdminAdjustForm } from "@/components/AdminAdjustForm";
 import { AssetForm } from "@/components/AssetForm";
+import { InstallAppButton } from "@/components/InstallAppButton";
 import { LedgerHistory } from "@/components/LedgerHistory";
 import { PriceForm } from "@/components/PriceForm";
 import { YieldSettingsForm } from "@/components/YieldSettingsForm";
@@ -72,6 +73,7 @@ export default async function OversightPage() {
       <PageHeader
         title="Oversight"
         subtitle="Operational control: verify identities, validate incoming commitments, and process distribution requests."
+        actions={<InstallAppButton />}
       />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

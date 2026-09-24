@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Cormorant_Garamond, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -26,6 +26,20 @@ export const metadata: Metadata = {
   },
   description:
     "A transparent investment tracking and portfolio console. Your deposits, your holdings, real prices, honest returns.",
+  applicationName: "Apex Yield Profit Render Inc",
+  appleWebApp: {
+    capable: true,
+    title: "ApexYield",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+    icon: [{ url: "/icon-192x192.png", sizes: "192x192", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#3a1220",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
