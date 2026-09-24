@@ -13,6 +13,7 @@ const initialState: ActionState = { ok: false };
 
 export function RegisterForm() {
   const [email, setEmail] = useState("");
+  const [localError, setLocalError] = useState("");
   const [state, formAction, pending] = useActionState(registerUserAction, initialState);
   const [verifyState, verifyAction, verifyPending] = useActionState(verifyEmailAction, initialState);
   const [resendState, resendAction, resendPending] = useActionState(resendCodeAction, initialState);
@@ -82,7 +83,19 @@ export function RegisterForm() {
   }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        const fd = new FormData(e.currentTarget);
+        if (fd.get("password") !== fd.get("confirmPassword")) {
+          e.preventDefault();
+          setLocalError("Passwords do not match.");
+        } else {
+          setLocalError("");
+        }
+      }}
+      className="space-y-4"
+    >
       <div>
         <label htmlFor="name" className="label">
           Full name
@@ -129,6 +142,27 @@ export function RegisterForm() {
           placeholder="At least 8 characters"
         />
       </div>
+      <div>
+        <label htmlFor="confirmPassword" className="label">
+          Confirm password
+        </label>
+        <input
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          className="input"
+          placeholder="Repeat your password"
+        />
+      </div>
+
+      {localError && (
+        <p className="rounded-lg border border-negative/40 bg-negative/10 px-3 py-2 text-sm text-negative">
+          {localError}
+        </p>
+      )}
 
       {state.message && !state.ok && (
         <p className="rounded-lg border border-negative/40 bg-negative/10 px-3 py-2 text-sm text-negative">

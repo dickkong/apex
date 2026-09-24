@@ -105,6 +105,8 @@ export async function registerUserAction(
   if (name.length < 2) return { ok: false, message: 'Enter your full name.' };
   if (!EMAIL_RE.test(email)) return { ok: false, message: 'Enter a valid email address.' };
   if (password.length < 8) return { ok: false, message: 'Password must be at least 8 characters.' };
+  const confirmPassword = (formData.get('confirmPassword') as string) ?? '';
+  if (password !== confirmPassword) return { ok: false, message: 'Passwords do not match.' };
 
   const legitError = await assertLegitEmail(email);
   if (legitError) return { ok: false, message: legitError };
@@ -219,7 +221,7 @@ export async function submitDepositAction(
   formData: FormData
 ): Promise<ActionState> {
   const user = await requireVerifiedUser();
-  if (!user) return { ok: false, message: 'Sign in with a verified account first.' };
+  if (!user) return { ok: false, message: 'Your account is pending approval by an administrator.' };
 
   const methodId = readForm(formData, 'methodId');
   const txid = readForm(formData, 'txid');
@@ -295,7 +297,7 @@ export async function requestWithdrawalAction(
   formData: FormData
 ): Promise<ActionState> {
   const user = await requireVerifiedUser();
-  if (!user) return { ok: false, message: 'Sign in with a verified account first.' };
+  if (!user) return { ok: false, message: 'Your account is pending approval by an administrator.' };
 
   const parsed = parseAmount(readForm(formData, 'amount'));
   if (parsed.error) return { ok: false, message: parsed.error };
@@ -346,7 +348,7 @@ export async function updatePayoutAddressAction(
   formData: FormData
 ): Promise<ActionState> {
   const user = await requireVerifiedUser();
-  if (!user) return { ok: false, message: 'Sign in with a verified account first.' };
+  if (!user) return { ok: false, message: 'Your account is pending approval by an administrator.' };
 
   const address = readForm(formData, 'address');
   if (address.length < 3 || address.length > 200) {
@@ -367,7 +369,7 @@ export async function buyAssetAction(
   formData: FormData
 ): Promise<ActionState> {
   const user = await requireVerifiedUser();
-  if (!user) return { ok: false, message: 'Sign in with a verified account first.' };
+  if (!user) return { ok: false, message: 'Your account is pending approval by an administrator.' };
 
   const assetId = readForm(formData, 'assetId');
   const parsed = parseAmount(readForm(formData, 'amount'));
@@ -443,7 +445,7 @@ export async function sellAssetAction(
   formData: FormData
 ): Promise<ActionState> {
   const user = await requireVerifiedUser();
-  if (!user) return { ok: false, message: 'Sign in with a verified account first.' };
+  if (!user) return { ok: false, message: 'Your account is pending approval by an administrator.' };
 
   const holdingId = readForm(formData, 'holdingId');
   const unitsInput = Number(readForm(formData, 'units'));
