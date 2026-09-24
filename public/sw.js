@@ -1,4 +1,4 @@
-const CACHE = "apexyield-v1";
+const CACHE = "apexyield-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -49,8 +49,12 @@ async function networkFirst(request) {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
   const html = request.headers.get("accept")?.includes("text/html") ?? false;
   if (html) {
+    event.respondWith(networkFirst(request));
+  } else if (url.pathname.startsWith("/_next/")) {
     event.respondWith(networkFirst(request));
   } else {
     event.respondWith(cacheFirst(request));
