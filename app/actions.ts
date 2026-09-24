@@ -205,14 +205,6 @@ export async function loginUserAction(_prev: ActionState, formData: FormData): P
     return { ok: false, message: 'Incorrect email or password.' };
   }
 
-  if (!user.email_verified_at) {
-    return {
-      ok: false,
-      needsEmailVerify: true,
-      message: 'Confirm your email address before signing in. Check your inbox for the 6-digit code (and spam).',
-    };
-  }
-
   await createSession(user.id);
   redirect('/dashboard');
 }

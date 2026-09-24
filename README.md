@@ -60,8 +60,8 @@ Credentials are also written to `data/admin-credentials.txt`. `data/` is gitigno
 - **Legitimate emails only**: at signup the address must be syntactically valid, must not be a
   known disposable/temp-mail domain, and must have a real mail server (`MX` lookup) — then a
   **6-digit code** is emailed through **Supabase Auth (GoTrue `otp` / `verify`)**. The account
-  cannot be used until the code is entered (`users.email_verified_at`). Logins for addresses that
-  are registered but unverified are bounced to the same code-entry step, with resend.
+  cannot be used until the code is entered (`users.email_verified_at`). This verification is a
+  **sign-up-only** step: signing in later is plain email + password, with no code sent or required.
 - Existing rows (admin + prior users) are treated as already email-verified on migration.
 - New users register and are **`pending`** until an admin approves them in Oversight.
 - Unverified accounts cannot deposit, buy, sell, or withdraw — every money action is gated on
