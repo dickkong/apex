@@ -25,6 +25,7 @@ export interface UserRow {
   salt: string;
   created_at: string;
   verified_at: string | null;
+  email_verified_at: string | null;
   withdraw_address: string | null;
 }
 
@@ -157,6 +158,7 @@ const SCHEMA_SQL = `
     salt            TEXT NOT NULL,
     created_at      TEXT NOT NULL,
     verified_at     TEXT,
+    email_verified_at TEXT,
     withdraw_address TEXT
   );
   CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (LOWER(email));
@@ -258,6 +260,14 @@ export const sessionSecret: string = envSecret && envSecret.length >= 32 ? envSe
 
 async function migrate(db: PgRunner) {
   await db.run(SCHEMA_SQL);
+  await db.run(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TEXT`
+  );
+  await db.run(
+    `UPDATE users
+     SET email_verified_at = COALESCE(email_verified_at, verified_at, created_at)
+     WHERE email_verified_at IS NULL`
+  );
   await db.run(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, [
     'daily_yield_rate',
     '0.009',
@@ -277,8 +287,8 @@ async function seed(db: PgRunner) {
   const id = randomUUID();
 
   await db.run(
-    `INSERT INTO users (id, email, name, role, status, password_hash, salt, created_at, verified_at)
-     VALUES ($1, $2, $3, 'admin', 'verified', $4, $5, $6, $7)`,
+    `INSERT INTO users (id, email, name, role, status, password_hash, salt, created_at, verified_at, email_verified_at)
+     VALUES ($1, $2, $3, 'admin', 'verified', $4, $5, $6, $7, $7)`,
     [id, email, 'Oversight Manager', hash, salt, now, now]
   );
 
@@ -383,6 +393,11 @@ async function migrateFromSqliteIfEmpty(db: PgRunner) {
       }
       console.log(`  copied ${rows.length} row${rows.length === 1 ? '' : 's'} from ${table}`);
     }
+    await db.run(
+      `UPDATE users
+       SET email_verified_at = COALESCE(email_verified_at, verified_at, created_at)
+       WHERE email_verified_at IS NULL`
+    );
     console.log('[ApexYield] SQLite → Supabase migration complete.');
   } finally {
     src.close();

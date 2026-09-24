@@ -57,9 +57,19 @@ Credentials are also written to `data/admin-credentials.txt`. `data/` is gitigno
 ## Core design
 
 ### Identity first
+- **Legitimate emails only**: at signup the address must be syntactically valid, must not be a
+  known disposable/temp-mail domain, and must have a real mail server (`MX` lookup) — then a
+  **6-digit code** is emailed through **Supabase Auth (GoTrue `otp` / `verify`)**. The account
+  cannot be used until the code is entered (`users.email_verified_at`). Logins for addresses that
+  are registered but unverified are bounced to the same code-entry step, with resend.
+- Existing rows (admin + prior users) are treated as already email-verified on migration.
 - New users register and are **`pending`** until an admin approves them in Oversight.
 - Unverified accounts cannot deposit, buy, sell, or withdraw — every money action is gated on
   `status = 'verified'`.
+
+> Supabase email setup: Dashboard → **Authentication → Providers → Email** must be enabled
+> (raise the **Email OTP expiry** to ~10 minutes so users have time to enter the code).
+> `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` must be set.
 
 ### Anti-money-laundering (30-day money-bind)
 All new users are advised (landing page, register page, dashboard) that an **AML policy applies a

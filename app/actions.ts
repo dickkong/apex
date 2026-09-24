@@ -10,11 +10,13 @@ import { hashPassword, verifyPassword } from '@/lib/password';
 import { getCashBalance, getPriceAsOf } from '@/lib/portfolio';
 import { depositValueError, MAX_DAILY_YIELD_PCT, MIN_DAILY_YIELD_PCT } from '@/lib/limits';
 import { getWithdrawalLock, WITHDRAWAL_LOCK_DAYS } from '@/lib/lockdown';
+import { assertLegitEmail, sendOtpEmail, verifyOtpEmail } from '@/lib/email';
 import { ensureDailyYield, getEffectivePriceAsOf, setDailyYieldRate } from '@/lib/yield';
 
 export interface ActionState {
   ok: boolean;
   message?: string;
+  needsEmailVerify?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -104,6 +106,9 @@ export async function registerUserAction(
   if (!EMAIL_RE.test(email)) return { ok: false, message: 'Enter a valid email address.' };
   if (password.length < 8) return { ok: false, message: 'Password must be at least 8 characters.' };
 
+  const legitError = await assertLegitEmail(email);
+  if (legitError) return { ok: false, message: legitError };
+
   const db = await getDb();
   if (await db.get(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [email])) {
     return { ok: false, message: 'An account with this email already exists.' };
@@ -117,8 +122,75 @@ export async function registerUserAction(
     [id, email, name, hash, salt, nowIso()]
   );
 
-  await createSession(id);
+  try {
+    await sendOtpEmail(email);
+  } catch (err) {
+    await db.run(`DELETE FROM users WHERE id = $1`, [id]).catch(() => {});
+    return { ok: false, message: (err as Error).message };
+  }
+
+  return {
+    ok: true,
+    needsEmailVerify: true,
+    message: `We sent a 6-digit code to ${email}. Enter it to finish creating your account.`,
+  };
+}
+
+export async function verifyEmailAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const email = readForm(formData, 'email').toLowerCase();
+  const code = readForm(formData, 'code');
+  if (!/^\d{6}$/.test(code)) {
+    return { ok: false, message: 'Enter the 6-digit code from your email.' };
+  }
+
+  const db = await getDb();
+  const user = await db.get<UserRow>(`SELECT * FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
+  if (!user) return { ok: false, message: 'No account found for that email.' };
+  if (user.email_verified_at) {
+    return { ok: false, needsEmailVerify: false, message: 'This email is already verified — sign in.' };
+  }
+
+  let valid = false;
+  try {
+    valid = await verifyOtpEmail(email, code);
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
+  if (!valid) {
+    return { ok: false, message: 'That code was incorrect or expired. Request a new code.' };
+  }
+
+  await db.run(
+    `UPDATE users SET email_verified_at = $1 WHERE id = $2`,
+    [nowIso(), user.id]
+  );
+  await createSession(user.id);
   redirect('/dashboard');
+}
+
+export async function resendCodeAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const email = readForm(formData, 'email').toLowerCase();
+  if (!email) return { ok: false, message: 'Enter your email address.' };
+
+  const db = await getDb();
+  const user = await db.get<UserRow>(`SELECT * FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
+  if (!user) return { ok: false, message: 'No account found for that email.' };
+  if (user.email_verified_at) {
+    return { ok: false, needsEmailVerify: false, message: 'This email is already verified — sign in.' };
+  }
+
+  try {
+    await sendOtpEmail(email);
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
+  return { ok: true, message: `A new code was sent to ${email}. Check your inbox (and spam).` };
 }
 
 export async function loginUserAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -131,6 +203,14 @@ export async function loginUserAction(_prev: ActionState, formData: FormData): P
   const user = await db.get<UserRow>(`SELECT * FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
   if (!user || !verifyPassword(password, user.salt, user.password_hash)) {
     return { ok: false, message: 'Incorrect email or password.' };
+  }
+
+  if (!user.email_verified_at) {
+    return {
+      ok: false,
+      needsEmailVerify: true,
+      message: 'Confirm your email address before signing in. Check your inbox for the 6-digit code (and spam).',
+    };
   }
 
   await createSession(user.id);
