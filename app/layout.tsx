@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Cormorant_Garamond, Geist, Geist_Mono } from "next/font/google";
+import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,6 +21,7 @@ const display = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: "Apex Yield Profit Render Inc · Portfolio Console",
     template: "%s · Apex Yield Profit Render Inc",
@@ -27,6 +29,31 @@ export const metadata: Metadata = {
   description:
     "A transparent investment tracking and portfolio console. Your deposits, your holdings, real prices, honest returns.",
   applicationName: "Apex Yield Profit Render Inc",
+  robots: {
+    index: true,
+    follow: true,
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Apex Yield Profit Render Inc",
+    title: {
+      default: "Apex Yield Profit Render Inc · Portfolio Console",
+      template: "%s · Apex Yield Profit Render Inc",
+    },
+    description:
+      "A transparent investment tracking and portfolio console. Your deposits, your holdings, real prices, honest returns.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: {
+      default: "Apex Yield Profit Render Inc · Portfolio Console",
+      template: "%s · Apex Yield Profit Render Inc",
+    },
+    description:
+      "A transparent investment tracking and portfolio console. Your deposits, your holdings, real prices, honest returns.",
+    images: ["/opengraph-image.png"],
+  },
   appleWebApp: {
     capable: true,
     title: "ApexYield",
