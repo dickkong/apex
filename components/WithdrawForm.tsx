@@ -15,7 +15,11 @@ export function WithdrawForm({
   maxCash: number;
   disabled?: boolean;
   defaultAddress?: string | null;
-  lockInfo?: { untilDate: string; daysRemaining: number } | null;
+  lockInfo?: {
+    untilDate: string;
+    daysRemaining: number;
+    pending: boolean;
+  } | null;
 }) {
   const [state, formAction, pending] = useActionState(requestWithdrawalAction, initialState);
   const [dest, setDest] = useState(defaultAddress ?? "");
@@ -27,13 +31,25 @@ export function WithdrawForm({
       {locked ? (
         <p className="rounded-lg border border-gold-600/40 bg-maroon-900/40 px-3 py-2 text-xs leading-relaxed text-muted">
           <span className="font-semibold text-gold-300">
-            AML withdrawal lockdown active.
+            AML withdrawal lockdown.
           </span>{" "}
-          New accounts are bound by the anti-money-laundering policy: a{" "}
-          <span className="font-semibold text-foreground">30-day money-bind</span> is placed on
-          your deposit. Withdrawals unlock on <span className="font-semibold text-foreground">{lockInfo?.untilDate}</span>{" "}
-          ({lockInfo?.daysRemaining} day{lockInfo?.daysRemaining === 1 ? "" : "s"} remaining). Your
-          capital keeps growing at the 0.5%–1% daily accrual rate during this period.
+          {lockInfo?.pending ? (
+            <>
+              New accounts are bound by the anti-money-laundering policy: a{" "}
+              <span className="font-semibold text-foreground">30-day money-bind</span> is placed on
+              your first deposit. It starts counting down the day your first deposit is approved and
+              posted.
+            </>
+          ) : (
+            <>
+              New accounts are bound by the anti-money-laundering policy: a{" "}
+              <span className="font-semibold text-foreground">30-day money-bind</span> runs from the
+              day your first deposit was posted. Withdrawals unlock on{" "}
+              <span className="font-semibold text-foreground">{lockInfo?.untilDate}</span> (
+              {lockInfo?.daysRemaining} day{lockInfo?.daysRemaining === 1 ? "" : "s"} remaining).
+              Your capital keeps growing at the 0.5%–1% daily accrual rate during this period.
+            </>
+          )}
         </p>
       ) : null}
 

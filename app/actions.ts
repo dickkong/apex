@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from '@/lib/password';
 import { getCashBalance, getPriceAsOf } from '@/lib/portfolio';
 import { depositValueError, MAX_DAILY_YIELD_PCT, MIN_DAILY_YIELD_PCT } from '@/lib/limits';
 import { getWithdrawalLock, WITHDRAWAL_LOCK_DAYS } from '@/lib/lockdown';
+import { getFirstDepositDate } from '@/lib/queries';
 import { assertLegitEmail, sendOtpEmail, verifyOtpEmail } from '@/lib/email';
 import { ensureDailyYield, getEffectivePriceAsOf, setDailyYieldRate } from '@/lib/yield';
 
@@ -302,12 +303,12 @@ export async function requestWithdrawalAction(
   const parsed = parseAmount(readForm(formData, 'amount'));
   if (parsed.error) return { ok: false, message: parsed.error };
 
-  const lock = getWithdrawalLock(user);
+  const lock = getWithdrawalLock({ role: user.role, anchorDate: await getFirstDepositDate(user.id) });
   if (lock.locked) {
-    return {
-      ok: false,
-      message: `Withdrawals are locked for new accounts under the anti-money-laundering policy for ${WITHDRAWAL_LOCK_DAYS} days. Lockdown ends ${lock.untilDate} (${lock.daysRemaining} day${lock.daysRemaining === 1 ? '' : 's'} remaining). Your capital keeps accruing at the 0.5%–1% daily rate during this period.`,
-    };
+    const message = lock.pending
+      ? `Withdrawals are locked under the anti-money-laundering policy. A 30-day money-bind is placed on your first deposit — it counts down from the day that deposit is approved and posted.`
+      : `Withdrawals are locked under the anti-money-laundering policy for ${WITHDRAWAL_LOCK_DAYS} days from the day your first deposit was posted. Lockdown ends ${lock.untilDate} (${lock.daysRemaining} day${lock.daysRemaining === 1 ? '' : 's'} remaining). Your capital keeps accruing at the 0.5%–1% daily rate during this period.`;
+    return { ok: false, message };
   }
 
   if (parsed.amount > (await getCashBalance(user.id)) + 0.001) {

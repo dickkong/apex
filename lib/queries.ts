@@ -5,6 +5,16 @@ function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export async function getFirstDepositDate(userId: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.get<{ d: string | null }>(
+    `SELECT MIN(created_at) AS d FROM ledger
+     WHERE user_id = $1 AND kind = 'deposit' AND status = 'posted'`,
+    [userId]
+  );
+  return row?.d ?? null;
+}
+
 export interface LedgerView extends LedgerRow {
   user_name: string;
   user_email: string;
@@ -126,6 +136,7 @@ export interface UserBalanceRow {
   status: string;
   verified_at: string | null;
   created_at: string;
+  first_deposit_at: string | null;
   withdraw_address: string | null;
   cash: number;
   net_deposits: number;
@@ -134,8 +145,25 @@ export interface UserBalanceRow {
 export async function getUsersWithBalances(): Promise<UserBalanceRow[]> {
   const db = await getDb();
   const rows = await db.all<
-    Pick<UserBalanceRow, 'id' | 'email' | 'name' | 'role' | 'status' | 'verified_at' | 'created_at' | 'withdraw_address'>
-  >(`SELECT id, email, name, role, status, verified_at, created_at, withdraw_address FROM users ORDER BY created_at`);
+    Pick<
+      UserBalanceRow,
+      | 'id'
+      | 'email'
+      | 'name'
+      | 'role'
+      | 'status'
+      | 'verified_at'
+      | 'created_at'
+      | 'first_deposit_at'
+      | 'withdraw_address'
+    >
+  >(
+    `SELECT u.id, u.email, u.name, u.role, u.status, u.verified_at, u.created_at, u.withdraw_address,
+            (SELECT MIN(l.created_at) FROM ledger l
+             WHERE l.user_id = u.id AND l.kind = 'deposit' AND l.status = 'posted') AS first_deposit_at
+     FROM users u
+     ORDER BY u.created_at`
+  );
 
   return Promise.all(
     rows.map(async (r) => {

@@ -254,7 +254,7 @@ export default async function OversightPage() {
               </thead>
               <tbody>
                 {members.map((m) => {
-                  const lock = getWithdrawalLock(m);
+                  const lock = getWithdrawalLock({ role: m.role, anchorDate: m.first_deposit_at });
                   return (
                   <tr key={m.id} className="border-b border-line/60 align-top">
                     <td className="py-2.5 pr-3">
@@ -262,7 +262,9 @@ export default async function OversightPage() {
                       <p className="text-xs text-muted">{m.email}</p>
                       {lock.locked ? (
                         <p className="mt-0.5 text-[11px] text-gold-400">
-                          AML withdrawal lockdown until {lock.untilDate}
+                          {lock.pending
+                            ? "AML 30-day lockdown begins once the first deposit posts"
+                            : `AML withdrawal lockdown until ${lock.untilDate}`}
                         </p>
                       ) : null}
                       {m.withdraw_address ? (

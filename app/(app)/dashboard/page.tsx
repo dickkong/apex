@@ -9,7 +9,7 @@ import { Badge, Card, EmptyState, PageHeader, PnlText, Stat } from "@/components
 import { getSessionUser } from "@/lib/auth";
 import { fmtDate, fmtMoney, fmtPct, fmtMoneyCompact, fmtUnits } from "@/lib/money";
 import { getSeries, getSummary } from "@/lib/portfolio";
-import { getDepositMethods, getRecentLedger, parseLedgerMeta, type LedgerView } from "@/lib/queries";
+import { getDepositMethods, getRecentLedger, getFirstDepositDate, parseLedgerMeta, type LedgerView } from "@/lib/queries";
 import { getWithdrawalLock } from "@/lib/lockdown";
 import { getDailyYieldRate } from "@/lib/yield";
 
@@ -45,7 +45,10 @@ const [summary, series, recent, channels, yieldRate] = await Promise.all([
     getDepositMethods(true),
     getDailyYieldRate(),
   ]);
-  const lock = getWithdrawalLock(user);
+  const lock = getWithdrawalLock({
+    role: user.role,
+    anchorDate: await getFirstDepositDate(user.id),
+  });
   const verified = user.status === "verified";
 
   return (
@@ -128,7 +131,15 @@ const [summary, series, recent, channels, yieldRate] = await Promise.all([
               maxCash={verified ? summary.cash : 0}
               disabled={!verified}
               defaultAddress={user.withdraw_address}
-              lockInfo={lock.locked ? { untilDate: lock.untilDate, daysRemaining: lock.daysRemaining } : null}
+              lockInfo={
+                lock.locked
+                  ? {
+                      untilDate: lock.untilDate,
+                      daysRemaining: lock.daysRemaining,
+                      pending: lock.pending,
+                    }
+                  : null
+              }
             />
           </Card>
           <Card title="Payout address" subtitle="Where verified withdrawals are sent.">
