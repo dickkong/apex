@@ -4,11 +4,13 @@ import { TicketCard } from "@/components/TicketCard";
 import { TicketCreateForm } from "@/components/TicketCreateForm";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { getSessionUser } from "@/lib/auth";
+import { SUPPORT_ENABLED } from "@/lib/features";
 import { getTicketReplies, getTicketsForUser } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Support" };
 
 export default async function SupportPage() {
+  if (!SUPPORT_ENABLED) redirect("/dashboard");
   const user = await getSessionUser();
   if (!user) redirect("/login");
 

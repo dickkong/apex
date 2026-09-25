@@ -2,8 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { logoutUserAction } from "@/app/actions";
+import { EmailUsButton } from "@/components/EmailUsButton";
 import { NavLinks } from "@/components/NavLinks";
 import { getSessionUser } from "@/lib/auth";
+import { SUPPORT_ENABLED } from "@/lib/features";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await getSessionUser();
@@ -35,7 +37,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               { href: "/dashboard", label: "Portfolio" },
               { href: "/holdings", label: "Holdings" },
               { href: "/transactions", label: "Transactions" },
-              { href: "/support", label: "Support" },
+              ...(SUPPORT_ENABLED ? [{ href: "/support", label: "Support" }] : []),
             ]}
           />
         </nav>
@@ -64,6 +66,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               </p>
             </div>
           </div>
+          {user.status === "verified" ? (
+            <div className="mt-3">
+              <EmailUsButton />
+            </div>
+          ) : null}
           <form action={logoutUserAction} className="mt-3">
             <button type="submit" className="btn-ghost w-full">
               Sign out
