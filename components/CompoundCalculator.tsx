@@ -17,8 +17,8 @@ function schedule(initial: number, rate: number, days: number): number[] {
   return pts;
 }
 
-export default function CompoundCalculator() {
-  const [initial, setInitial] = useState<string>("130");
+export default function CompoundCalculator({ defaultInitial = 130 }: { defaultInitial?: number }) {
+  const [initial, setInitial] = useState<string>(String(defaultInitial));
   const [ratePct, setRatePct] = useState<string>("0.9");
   const [days, setDays] = useState<string>("30");
 

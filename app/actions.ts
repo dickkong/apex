@@ -135,7 +135,7 @@ export async function registerUserAction(
   return {
     ok: true,
     needsEmailVerify: true,
-    message: `We sent a 6-digit code to ${email}. Enter it to finish creating your account.`,
+    message: `We emailed a verification link to ${email}. Click it in your inbox to confirm your address. If your email shows a 6-digit code instead, enter it below.`,
   };
 }
 
@@ -146,7 +146,7 @@ export async function verifyEmailAction(
   const email = readForm(formData, 'email').toLowerCase();
   const code = readForm(formData, 'code');
   if (!/^\d{6}$/.test(code)) {
-    return { ok: false, message: 'Enter the 6-digit code from your email.' };
+    return { ok: false, message: 'If your email contained a 6-digit code, enter it here. Otherwise use the verification link we emailed.' };
   }
 
   const db = await getDb();
@@ -193,7 +193,7 @@ export async function resendCodeAction(
   } catch (err) {
     return { ok: false, message: (err as Error).message };
   }
-  return { ok: true, message: `A new code was sent to ${email}. Check your inbox (and spam).` };
+  return { ok: true, message: `A new verification email was sent to ${email}. Click the link in your inbox (and check spam).` };
 }
 
 export async function loginUserAction(_prev: ActionState, formData: FormData): Promise<ActionState> {

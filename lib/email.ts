@@ -280,7 +280,7 @@ export async function sendOtpEmail(email: string): Promise<void> {
       /* ignore */
     }
     throw new Error(
-      `Could not email a verification code (${res.status}${
+      `Could not send the verification email (${res.status}${
         detail ? `: ${detail}` : ''
       }). Check that the Email provider is enabled in Supabase Auth.`
     );

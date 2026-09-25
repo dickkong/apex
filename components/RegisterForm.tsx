@@ -29,9 +29,15 @@ export function RegisterForm() {
 
         <form action={verifyAction} className="space-y-4">
           <input type="hidden" name="email" value={email} />
+          <p className="rounded-lg border border-line bg-surface2 px-3 py-2 text-xs leading-relaxed text-muted">
+            We emailed a <span className="font-semibold text-foreground">verification link</span> to{" "}
+            {email}. Click it in your inbox to confirm. If your email shows a{" "}
+            <span className="font-semibold text-foreground">6-digit code</span> instead, enter it
+            below.
+          </p>
           <div>
             <label htmlFor="code" className="label">
-              Verification code
+              Verification code (if you received one)
             </label>
             <input
               id="code"
@@ -41,7 +47,6 @@ export function RegisterForm() {
               pattern="[0-9]{6}"
               maxLength={6}
               autoComplete="one-time-code"
-              required
               className="input"
               placeholder="123456"
             />
@@ -68,7 +73,7 @@ export function RegisterForm() {
             disabled={resendPending}
             className="btn-ghost px-3 py-1.5 text-sm"
           >
-            Resend code
+            Resend email
           </button>
         </form>
 
@@ -175,9 +180,9 @@ export function RegisterForm() {
       </button>
 
       <p className="rounded-lg border border-line bg-surface2 px-3 py-2 text-xs leading-relaxed text-muted">
-        Only real, verifiable email addresses are accepted. After you sign up we send a 6-digit code
-        to your inbox to confirm the address, then an admin must approve your account before you can
-        deposit, invest, or withdraw.
+        Only real, verifiable email addresses are accepted. After you sign up we email a
+        confirmation link to your inbox (the link, or a 6-digit code, confirms the address), then
+        an admin must approve your account before you can deposit, invest, or withdraw.
       </p>
 
       <p className="text-center text-sm text-muted">

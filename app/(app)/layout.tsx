@@ -37,6 +37,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               { href: "/dashboard", label: "Portfolio" },
               { href: "/holdings", label: "Holdings" },
               { href: "/transactions", label: "Transactions" },
+              { href: "/calculator", label: "Calculator" },
               ...(SUPPORT_ENABLED ? [{ href: "/support", label: "Support" }] : []),
             ]}
           />
