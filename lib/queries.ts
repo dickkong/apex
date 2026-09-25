@@ -1,4 +1,4 @@
-import { getDb, cashCaseSql, type DepositMethodRow, type LedgerRow, type UserRow } from './db';
+import { getDb, cashCaseSql, type DepositMethodRow, type LedgerRow, type TicketReplyRow, type TicketRow, type UserRow } from './db';
 import { getCashBalance, getNetDeposits } from './portfolio';
 
 function todayDateOnly(): string {
@@ -170,5 +170,62 @@ export async function getUsersWithBalances(): Promise<UserBalanceRow[]> {
       const [cash, net_deposits] = await Promise.all([getCashBalance(r.id), getNetDeposits(r.id)]);
       return { ...r, cash, net_deposits };
     })
+  );
+}
+
+export interface TicketView extends TicketRow {
+  user_name: string;
+  user_email: string;
+  user_status: string;
+  reply_count: number;
+  last_reply_at: string;
+  last_message: string | null;
+}
+
+export interface TicketReplyView extends TicketReplyRow {
+  author_name: string;
+  author_email: string;
+}
+
+const TICKET_SELECT = `
+  SELECT t.*, u.name AS user_name, u.email AS user_email, u.status AS user_status,
+         COALESCE(rc.reply_count, 0) AS reply_count,
+         COALESCE(lr.last_reply_at, t.created_at) AS last_reply_at,
+         lr.last_message AS last_message
+  FROM tickets t
+  JOIN users u ON u.id = t.user_id
+  LEFT JOIN (SELECT ticket_id, COUNT(*)::int AS reply_count
+             FROM ticket_replies GROUP BY ticket_id) rc ON rc.ticket_id = t.id
+  LEFT JOIN (SELECT ticket_id,
+                    MAX(created_at) AS last_reply_at,
+                    (SELECT message FROM ticket_replies r2
+                     WHERE r2.ticket_id = r1.ticket_id
+                     ORDER BY r2.created_at DESC LIMIT 1) AS last_message
+             FROM ticket_replies r1 GROUP BY ticket_id) lr ON lr.ticket_id = t.id
+`;
+
+export async function getTicketsForUser(userId: string): Promise<TicketView[]> {
+  const db = await getDb();
+  return db.all<TicketView>(`${TICKET_SELECT} WHERE t.user_id = $1 ORDER BY t.updated_at DESC`, [
+    userId,
+  ]);
+}
+
+export async function getAllTickets(): Promise<TicketView[]> {
+  const db = await getDb();
+  return db.all<TicketView>(
+    `${TICKET_SELECT} ORDER BY CASE WHEN t.status = 'open' THEN 0 ELSE 1 END, t.updated_at DESC`
+  );
+}
+
+export async function getTicketReplies(ticketId: string): Promise<TicketReplyView[]> {
+  const db = await getDb();
+  return db.all<TicketReplyView>(
+    `SELECT r.*, u.name AS author_name, u.email AS author_email
+     FROM ticket_replies r
+     JOIN users u ON u.id = r.author_id
+     WHERE r.ticket_id = $1
+     ORDER BY r.created_at ASC`,
+    [ticketId]
   );
 }

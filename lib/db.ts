@@ -101,6 +101,27 @@ export interface DepositMethodRow {
   created_at: string;
 }
 
+export type TicketStatus = 'open' | 'closed';
+
+export interface TicketRow {
+  id: string;
+  user_id: string;
+  subject: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+export interface TicketReplyRow {
+  id: string;
+  ticket_id: string;
+  author_id: string;
+  author_type: 'user' | 'admin';
+  message: string;
+  created_at: string;
+}
+
 export type SqlValue = string | number | null | boolean;
 
 // Small async facade over a pg Pool or a transactional PoolClient, mirroring the
@@ -237,12 +258,34 @@ const SCHEMA_SQL = `
     UNIQUE(asset_id, mark_date)
   );
 
+  CREATE TABLE IF NOT EXISTS tickets (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    subject    TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ticket_replies (
+    id          TEXT PRIMARY KEY,
+    ticket_id   TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    author_id   TEXT NOT NULL REFERENCES users(id),
+    author_type TEXT NOT NULL DEFAULT 'user',
+    message     TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_ledger_user     ON ledger(user_id);
   CREATE INDEX IF NOT EXISTS idx_ledger_status   ON ledger(status);
   CREATE INDEX IF NOT EXISTS idx_prices_asset    ON price_observations(asset_id, obs_date);
   CREATE INDEX IF NOT EXISTS idx_holdings_user   ON holdings(user_id);
   CREATE INDEX IF NOT EXISTS idx_methods_enabled ON deposit_methods(enabled);
   CREATE INDEX IF NOT EXISTS idx_marks_asset     ON yield_marks(asset_id, mark_date);
+  CREATE INDEX IF NOT EXISTS idx_tickets_user   ON tickets(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_replies_ticket ON ticket_replies(ticket_id, created_at);
 `;
 
 function ensureSessionSecret(): string {

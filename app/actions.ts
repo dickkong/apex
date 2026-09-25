@@ -791,3 +791,127 @@ export async function updateDepositMethodAction(formData: FormData): Promise<voi
   revalidatePath('/oversight');
   revalidatePath('/dashboard');
 }
+
+export async function createTicketAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, message: 'Sign in to raise a support ticket.' };
+
+  const subject = readForm(formData, 'subject');
+  const message = readForm(formData, 'message');
+  if (subject.length < 3 || subject.length > 200) {
+    return { ok: false, message: 'Enter a subject between 3 and 200 characters.' };
+  }
+  if (message.length < 10 || message.length > 4000) {
+    return { ok: false, message: 'Describe your issue in at least 10 characters (max 4000).' };
+  }
+
+  const db = await getDb();
+  const now = nowIso();
+  const ticketId = randomUUID();
+  await db.run(
+    `INSERT INTO tickets (id, user_id, subject, status, created_at, updated_at, closed_at)
+     VALUES ($1, $2, $3, 'open', $4, $4, NULL)`,
+    [ticketId, user.id, subject, now]
+  );
+  await db.run(
+    `INSERT INTO ticket_replies (id, ticket_id, author_id, author_type, message, created_at)
+     VALUES ($1, $2, $3, 'user', $4, $5)`,
+    [randomUUID(), ticketId, user.id, message, now]
+  );
+
+  revalidatePath('/support');
+  revalidatePath('/oversight');
+  return { ok: true, message: 'Ticket raised — an admin will respond here in the app.' };
+}
+
+export async function replyTicketAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, message: 'Sign in to reply to a ticket.' };
+
+  const ticketId = readForm(formData, 'ticketId');
+  const message = readForm(formData, 'message');
+  if (!ticketId) return { ok: false, message: 'Missing ticket.' };
+  if (message.length < 1 || message.length > 4000) {
+    return { ok: false, message: 'Enter a message (max 4000 characters).' };
+  }
+
+  const db = await getDb();
+  const ticket = await db.get<{ id: string; status: string }>(
+    `SELECT id, status FROM tickets WHERE id = $1`,
+    [ticketId]
+  );
+  if (!ticket) return { ok: false, message: 'Ticket not found.' };
+  if (ticket.status === 'closed') {
+    return { ok: false, message: 'This ticket is closed — raise a new one if you need further help.' };
+  }
+  const isAdmin = user.role === 'admin';
+  const owned = await db.get<{ id: string }>(`SELECT id FROM tickets WHERE id = $1 AND user_id = $2`, [
+    ticketId,
+    user.id,
+  ]);
+  if (!isAdmin && !owned) {
+    return { ok: false, message: 'You can only reply to your own tickets.' };
+  }
+
+  await db.run(
+    `INSERT INTO ticket_replies (id, ticket_id, author_id, author_type, message, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [randomUUID(), ticketId, user.id, isAdmin ? 'admin' : 'user', message, nowIso()]
+  );
+  await db.run(
+    `UPDATE tickets SET updated_at = $1 WHERE id = $2`,
+    [nowIso(), ticketId]
+  );
+
+  revalidatePath('/support');
+  revalidatePath('/oversight');
+  return { ok: true, message: 'Reply posted to the ticket.' };
+}
+
+export async function closeTicketAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  if (!admin) throw new Error('Admin access required.');
+
+  const ticketId = readForm(formData, 'ticketId');
+  if (!ticketId) throw new Error('Missing ticket.');
+
+  const db = await getDb();
+  const now = nowIso();
+  await db.run(
+    `UPDATE tickets SET status = 'closed', closed_at = $1, updated_at = $1 WHERE id = $2`,
+    [now, ticketId]
+  );
+
+  revalidatePath('/support');
+  revalidatePath('/oversight');
+}
+
+export async function reopenTicketAction(formData: FormData): Promise<void> {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Sign in.');
+
+  const ticketId = readForm(formData, 'ticketId');
+  if (!ticketId) throw new Error('Missing ticket.');
+
+  const db = await getDb();
+  const isAdmin = user.role === 'admin';
+  const owned = await db.get<{ id: string }>(`SELECT id FROM tickets WHERE id = $1 AND user_id = $2`, [
+    ticketId,
+    user.id,
+  ]);
+  if (!isAdmin && !owned) throw new Error('You can only reopen your own tickets.');
+
+  await db.run(
+    `UPDATE tickets SET status = 'open', closed_at = NULL, updated_at = $1 WHERE id = $2`,
+    [nowIso(), ticketId]
+  );
+
+  revalidatePath('/support');
+  revalidatePath('/oversight');
+}

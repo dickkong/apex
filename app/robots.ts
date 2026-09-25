@@ -12,6 +12,7 @@ export default function robots(): MetadataRoute.Robots {
         "/dashboard",
         "/holdings",
         "/transactions",
+        "/support",
         "/oversight",
       ],
     },
