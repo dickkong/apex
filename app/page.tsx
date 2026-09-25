@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/site";
 import CompoundCalculator from "@/components/CompoundCalculator";
+import { TestimonialCarousel } from "@/components/TestimonialCarousel";
 
 export const metadata: Metadata = {
   title: "Apex Yield Profit Render Inc — daily yield platform",
@@ -146,6 +147,8 @@ export default async function Home() {
             </Link>
           </div>
         </section>
+
+        <TestimonialCarousel />
 
         <footer className="pb-4 text-center">
           <p className="text-xs text-muted">

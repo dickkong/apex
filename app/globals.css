@@ -97,3 +97,63 @@ body {
   color: var(--foreground);
   font-size: 0.75rem;
 }
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(48px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-48px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(48px);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-out-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-48px);
+    opacity: 0;
+  }
+}
+
+.anim-in-right {
+  animation: slide-in-right 0.36s ease-out both;
+}
+
+.anim-in-left {
+  animation: slide-in-left 0.36s ease-out both;
+}
+
+.anim-out-right {
+  animation: slide-out-right 0.36s ease-in both;
+}
+
+.anim-out-left {
+  animation: slide-out-left 0.36s ease-in both;
+}
