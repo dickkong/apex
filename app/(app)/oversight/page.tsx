@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import {
-  closeTicketAction,
   createDepositMethodAction,
   resolveDepositAction,
   resolveWithdrawalAction,
@@ -13,7 +12,7 @@ import { AssetForm } from "@/components/AssetForm";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { LedgerHistory } from "@/components/LedgerHistory";
 import { PriceForm } from "@/components/PriceForm";
-import { TicketReplyForm } from "@/components/TicketReplyForm";
+import { TicketCard } from "@/components/TicketCard";
 import { YieldSettingsForm } from "@/components/YieldSettingsForm";
 import { Badge, Card, EmptyState, PageHeader, PnlText } from "@/components/ui";
 import { getSessionUser } from "@/lib/auth";
@@ -332,55 +331,26 @@ export default async function OversightPage() {
         ) : (
           <div className="space-y-4">
             {ticketsWithReplies.map(({ ticket: t, replies }) => (
-              <div
+              <TicketCard
                 key={t.id}
-                className="rounded-lg border border-line/60 p-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium leading-snug">{t.subject}</p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {t.user_name} ({t.user_email}) · opened {fmtDateTime(t.created_at)}
-                    </p>
-                  </div>
-                  <Badge tone={t.status === "open" ? "gold" : "neutral"}>{t.status}</Badge>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  {replies.map((r) => (
-                    <div
-                      key={r.id}
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        r.author_type === "admin"
-                          ? "border-gold-600/40 bg-maroon-900/40"
-                          : "border-line/60 bg-surface2"
-                      }`}
-                    >
-                      <p className="text-[11px] uppercase tracking-wide text-muted">
-                        {r.author_type === "admin" ? "Oversight admin" : `${r.author_name} (member)`} ·{" "}
-                        {fmtDateTime(r.created_at)}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">{r.message}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {t.status === "open" ? (
-                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
-                    <TicketReplyForm ticketId={t.id} />
-                    <form action={closeTicketAction} className="flex items-end">
-                      <input type="hidden" name="ticketId" value={t.id} />
-                      <button type="submit" className="btn-ghost px-3 py-1.5 text-sm">
-                        Close ticket
-                      </button>
-                    </form>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-xs text-muted">
-                    Closed {t.closed_at ? fmtDateTime(t.closed_at) : ""}
-                  </p>
-                )}
-              </div>
+                view="admin"
+                ticket={{
+                  id: t.id,
+                  subject: t.subject,
+                  status: t.status,
+                  createdAt: t.created_at,
+                  updatedAt: t.updated_at,
+                  closedAt: t.closed_at,
+                  memberLabel: `${t.user_name} (${t.user_email})`,
+                  replies: replies.map((r) => ({
+                    id: r.id,
+                    authorType: r.author_type,
+                    authorName: r.author_name,
+                    createdAt: r.created_at,
+                    message: r.message,
+                  })),
+                }}
+              />
             ))}
           </div>
         )}
